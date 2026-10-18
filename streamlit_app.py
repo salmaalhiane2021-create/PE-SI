@@ -1193,7 +1193,7 @@ def main() -> None:
     # ----------------------------------------------------------------- entete
     title_col, balance_col = st.columns([3, 2])
     with title_col:
-        st.title("Tableau de bord NovaPay AI")
+        st.title("Tableau de bord")
         st.caption(f"Bonjour **{user['name']}** — {user['home_city']} · carte •••• {user['card_last4']} · "
                    f"{user['email']}")
     with balance_col:
@@ -1212,20 +1212,19 @@ def main() -> None:
 
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     kpi1.metric("Dépenses 30 j", fmt_money(to_display(spend_30d, currency), currency),
-                delta=f"{len(txs_30d)} transactions", delta_color="off")
-    kpi2.metric("Revenus 30 j", fmt_money(to_display(float(user["monthly_income"]), currency), currency),
-                delta="salaire mensuel", delta_color="off")
+                delta=f"{len(txs_30d)} tx", delta_color="off")
+    kpi2.metric("Revenus 30 j", fmt_money(to_display(float(user["monthly_income"]), currency), currency))
     kpi3.metric("Ticket moyen",
-                fmt_money(to_display(spend_30d / len(txs_30d), currency), currency) if txs_30d else "—",
-                delta="30 derniers jours", delta_color="off")
-    kpi4.metric("Risque moyen", f"{avg_risk:.1f} %", delta="pondéré 30 j", delta_color="off")
+                fmt_money(to_display(spend_30d / len(txs_30d), currency), currency) if txs_30d else "—")
+    kpi4.metric("Risque moyen", f"{avg_risk:.1f} %")
     with kpi5:
-        st.metric("Alertes", alerts_30d, delta="tentatives ≥ 60 %", delta_color="off")
+        st.metric("Alertes", alerts_30d)
         if hasattr(st, "dialog"):
-            if st.button("🔍 Voir les 3 dernières", width="stretch", key="open_alerts"):
+            if st.button("🔍 Détail", width="stretch", key="open_alerts"):
                 st.session_state["show_alerts_dialog"] = True
         else:
             st.caption("Voir l'onglet 🚨 Alertes")
+        st.caption("tentatives ≥ 60 %")
 
     # --------------------------------------------------- Boite de dialogue
     if session.get("show_alerts_dialog") and hasattr(st, "dialog"):
