@@ -1,24 +1,26 @@
 """
 streamlit_app.py
 ================
-NovaPay AI — version **Streamlit** du prototype FinTech (deployable sur
-Streamlit Community Cloud : https://share.streamlit.io).
+NovaPay AI — application **100 % Streamlit autonome**.
+
+- Interface entierement construite avec des composants Streamlit natifs
+  (st.metric, st.dataframe, st.bar_chart / st.line_chart / st.area_chart,
+  st.progress, st.tabs, st.dialog, st.container, st.code ...).
+- Aucune dependance a l'API FastAPI : le moteur IA de ``ml_model.py`` est
+  utilise directement dans le processus Streamlit.
+- Deployable telle quelle sur Streamlit Community Cloud (fichier principal :
+  ``streamlit_app.py``, dependances : ``requirements.txt``).
 
 Lancement local :
     streamlit run streamlit_app.py
 
-Le moteur IA est celui de ``ml_model.py`` (RandomForest + IsolationForest +
-regles metier, artefacts pre-entraines charges depuis ``artifacts/``).
-Les donnees de demonstration proviennent de ``demo_data.json``, genere par
-``export_demo.py`` a partir de la base SQLite (chargement instantane, pas de
-re-entrainement au demarrage).
+Donnees : ``demo_data.json`` (fixture versionnee, chargement instantane).
+Si la fixture est absente, un historique de demonstration est genere
+automatiquement avec le moteur IA (mode 100 % autonome).
 
-Fonctionnalites :
-    * tableau de bord (solde, KPI, graphiques, anomalies, score de securite)
-    * multi-devises (EUR / USD / MAD / GBP)
-    * simulateur de paiement avec score de risque **en temps reel**
-    * authentification dynamique : code a usage unique ``OTP-XXXX``
-    * historique des alertes (heur, montant, motif du blocage)
+Fonctionnalites : tableau de bord, multi-devises (EUR/USD/MAD/GBP),
+simulateur de paiement avec score de risque en temps reel, authentification
+dynamique (code a usage unique ``OTP-XXXX``), historique des alertes.
 """
 
 from __future__ import annotations
@@ -34,7 +36,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from ml_model import (
@@ -91,27 +92,50 @@ NORMAL_CATEGORY_POOL = (
     ["alimentation"] * 8 + ["restaurant"] * 7 + ["transport"] * 5 + ["sante"] * 2
     + ["abonnements"] * 3 + ["mode"] * 3 + ["ecommerce"] * 3 + ["voyage"] * 1
 )
-SUSPICIOUS_CATEGORY_POOL = ["crypto", "cartes_cadeaux", "jeux_argent", "electronique"]
+RISKY_CATEGORY_POOL = ["crypto", "cartes_cadeaux", "jeux_argent", "electronique"]
 SUSPICIOUS_CITIES = ["Moscou, RU", "Panama, PA", "Hong Kong, HK", "Lagos, NG", "Dubai, AE"]
+LOW_RISK_CITIES = ["Paris, FR", "Lyon, FR", "Marseille, FR", "Lille, FR", "Bruxelles, BE"]
 
-CAT_CHART_COLORS = ["#8b5cf6", "#22d3ee", "#34d399", "#fbbf24", "#f472b6",
-                    "#60a5fa", "#fb923c", "#a3e635", "#f87171", "#c084fc"]
+CHANNEL_LABELS: Dict[str, str] = {
+    "mobile_app": "Application mobile", "web": "Web", "atm": "Distributeur", "api": "API",
+}
 
-#: Villes disponibles par pays (choix deterministe, comme dans main.py)
+#: Villes disponibles par pays (choix deterministe, comme dans le simulateur)
 COUNTRY_CITIES: Dict[str, List[str]] = {}
 for _city, _meta in LOCATIONS.items():
     COUNTRY_CITIES.setdefault(_meta["country"], []).append(_city)
 for _cities in COUNTRY_CITIES.values():
     _cities.sort()
 
-COUNTRIES = sorted(
-    ({  "code": code,
+COUNTRIES: List[Dict[str, Any]] = sorted(
+    ({
+        "code": code,
         "name": COUNTRY_NAMES.get(code, code),
-        "risk_hint": max(LOCATIONS[c]["risk_hint"] for c in cities),
+        "risk_hint": max(LOCATIONS[city]["risk_hint"] for city in cities),
         "cities": cities,
     } for code, cities in COUNTRY_CITIES.items()),
-    key=lambda c: c["risk_hint"],
+    key=lambda country: country["risk_hint"],
 )
+
+#: Clients de demonstration (utilises uniquement si ``demo_data.json`` est absent)
+DEFAULT_USERS: List[Dict[str, Any]] = [
+    {"user_id": "user_001", "name": "Awa Diallo", "email": "awa.diallo@novapay.io",
+     "phone": "+33 6 12 •• •• 42", "home_city": "Paris, FR", "avg_amount": 46.0,
+     "monthly_income": 3250.0, "balance": 4185.75, "currency": "EUR",
+     "card_last4": "4821", "accent": "#8b5cf6"},
+    {"user_id": "user_002", "name": "Karim Benali", "email": "karim.benali@novapay.io",
+     "phone": "+33 6 74 •• •• 18", "home_city": "Lyon, FR", "avg_amount": 128.0,
+     "monthly_income": 5400.0, "balance": 9310.20, "currency": "EUR",
+     "card_last4": "3097", "accent": "#22d3ee"},
+    {"user_id": "user_003", "name": "Chloé Martin", "email": "chloe.martin@novapay.io",
+     "phone": "+33 6 55 •• •• 07", "home_city": "Marseille, FR", "avg_amount": 27.0,
+     "monthly_income": 2100.0, "balance": 1240.10, "currency": "EUR",
+     "card_last4": "7712", "accent": "#34d399"},
+    {"user_id": "user_004", "name": "Moussa Traoré", "email": "moussa.traore@novapay.io",
+     "phone": "+33 6 33 •• •• 91", "home_city": "Lille, FR", "avg_amount": 74.0,
+     "monthly_income": 3600.0, "balance": 5670.40, "currency": "EUR",
+     "card_last4": "5580", "accent": "#fbbf24"},
+]
 
 # ===========================================================================
 # Helpers
@@ -189,22 +213,17 @@ def resolve_location(country: Optional[str], default: str) -> str:
     return default
 
 
-def risk_color(score: float) -> str:
-    return "#34d399" if score < 30 else "#fbbf24" if score < 60 else "#fb923c" if score < 85 else "#f43f5e"
-
-
-def risk_badge(score: float, label: str) -> str:
-    color = risk_color(score)
-    return (
-        f'<span style="background:{color}22;color:{color};border:1px solid {color}66;'
-        f'border-radius:10px;padding:2px 10px;font-size:0.75rem;font-weight:700;">'
-        f'{label} · {score:.0f} %</span>'
-    )
+def risk_emoji(score: float) -> str:
+    return "🟢" if score < 30 else "🟡" if score < 60 else "🟠" if score < 85 else "🔴"
 
 
 def status_label(status: str) -> str:
     return {"approved": "Validée", "pending_auth": "En attente MFA",
             "declined": "Bloquée", "expired": "Expirée"}.get(status, status)
+
+
+def channel_label(channel: str) -> str:
+    return CHANNEL_LABELS.get(channel, channel)
 
 
 #: Libelles accentues (ml_model reste volontairement en ASCII pour la console)
@@ -221,12 +240,12 @@ def risk_level_label(level: str, fallback: str = "Risque") -> str:
 
 
 # ===========================================================================
-# Store de demonstration (en memoire, partage entre sessions)
+# Store de demonstration (en memoire, propre a chaque session)
 # ===========================================================================
 
 
 class DemoStore:
-    """Comptes clients + transactions, charges depuis ``demo_data.json``."""
+    """Comptes clients + transactions (charges depuis la fixture ou generes)."""
 
     def __init__(self, users: List[Dict[str, Any]], transactions: List[Dict[str, Any]]) -> None:
         self.users: Dict[str, Dict[str, Any]] = {u["user_id"]: dict(u) for u in users}
@@ -268,22 +287,22 @@ class DemoStore:
         if not rows:
             return 0.05
         weighted, weights = 0.0, 0.0
-        for i, tx in enumerate(rows):
-            w = 0.85 ** i
-            weighted += (float(tx["risk_score"] or 0.0) / 100.0) * w
-            weights += w
+        for index, tx in enumerate(rows):
+            weight = 0.85 ** index
+            weighted += (float(tx["risk_score"] or 0.0) / 100.0) * weight
+            weights += weight
         return round(weighted / max(weights, 1e-6), 3)
 
     def security(self, user_id: str, limit: int = 25) -> Dict[str, Any]:
-        """Score dynamique 0-100 (meme formule que l'API)."""
+        """Score dynamique 0-100 (meme formule que la version API)."""
         rows = self.txs(user_id, limit)
         if not rows:
             return {"score": 92.0, "level": "excellent", "incidents": 0, "avg_risk": 0.0}
         weighted, weights, incidents = 0.0, 0.0, 0
-        for i, tx in enumerate(rows):
-            w = 0.92 ** i
-            weighted += float(tx["risk_score"] or 0.0) * w
-            weights += w
+        for index, tx in enumerate(rows):
+            weight = 0.92 ** index
+            weighted += float(tx["risk_score"] or 0.0) * weight
+            weights += weight
             if float(tx["risk_score"] or 0.0) >= 70:
                 incidents += 1
         avg_risk = weighted / max(weights, 1e-6)
@@ -296,17 +315,22 @@ class DemoStore:
                 if float(t["risk_score"] or 0.0) >= 60 or t["status"] in ("declined", "expired")]
         return rows[:limit]
 
-    # ------------------------------------------------------------- analytics
+    def count_alerts(self, user_id: str) -> int:
+        return len([t for t in self.txs(user_id)
+                    if float(t["risk_score"] or 0.0) >= 60 or t["status"] in ("declined", "expired")])
+
+    # ------------------------------------------------------------- analytique
     def spend_by_category(self, user_id: str, days: int = 30) -> List[Dict[str, Any]]:
         cutoff = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
         buckets: Dict[str, Dict[str, Any]] = {}
         for tx in self.txs(user_id):
             if tx["created_at"] < cutoff or tx["status"] != "approved":
                 continue
-            bucket = buckets.setdefault(tx["merchant_type"], {"category": tx["merchant_type"], "amount": 0.0, "count": 0})
+            bucket = buckets.setdefault(tx["merchant_type"],
+                                        {"category": tx["merchant_type"], "amount": 0.0, "count": 0})
             bucket["amount"] = round(bucket["amount"] + float(tx["amount"]), 2)
             bucket["count"] += 1
-        rows = sorted(buckets.values(), key=lambda b: b["amount"], reverse=True)
+        rows = sorted(buckets.values(), key=lambda bucket: bucket["amount"], reverse=True)
         for row in rows:
             row["label"] = merchant_label(row["category"])
         return rows
@@ -333,40 +357,115 @@ class DemoStore:
             hours[int(tx["hour"] or 0) % 24] += 1
         return hours
 
+    def risk_buckets(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        buckets = [
+            {"Niveau": "🟢 Faible (<30 %)", "Transactions": 0},
+            {"Niveau": "🟡 Modéré (30-59 %)", "Transactions": 0},
+            {"Niveau": "🟠 Élevé (60-84 %)", "Transactions": 0},
+            {"Niveau": "🔴 Critique (≥85 %)", "Transactions": 0},
+        ]
+        for tx in self.txs(user_id, limit):
+            score = float(tx["risk_score"] or 0)
+            index = 0 if score < 30 else 1 if score < 60 else 2 if score < 85 else 3
+            buckets[index]["Transactions"] += 1
+        return buckets
+
 
 # ===========================================================================
-# Chargement (moteur IA + donnees)
+# Chargement du moteur + des donnees (mode autonome)
 # ===========================================================================
 
 
 @st.cache_resource(show_spinner="🧠 Chargement du moteur IA (RandomForest + IsolationForest)…")
 def get_engine() -> FraudEngine:
+    """Le moteur est partage par toutes les sessions (lecture seule, sans etat)."""
     return FraudEngine()
 
 
-def _load_store() -> DemoStore:
-    """Charge la fixture ``demo_data.json`` dans un store independant.
+def _seed_demo_store(engine: FraudEngine, days: int = 21) -> DemoStore:
+    """Genere un historique de demonstration complet **sans fixture externe**.
 
-    Repli minimal si la fixture n'a pas ete generee (python export_demo.py).
+    Utilise le moteur IA reel : chaque transaction generee recoit son score,
+    ses facteurs d'explication et son code d'autorisation.
     """
+    store = DemoStore(DEFAULT_USERS, [])
+    for user in store.all_users():
+        profile = {"home_city": user["home_city"], "avg_amount": float(user["avg_amount"]),
+                   "risk_history": 0.05}
+
+        def make_tx(moment: datetime, suspicious: bool) -> Dict[str, Any]:
+            """Construit une transaction notee par le moteur IA."""
+            category = random.choice(RISKY_CATEGORY_POOL if suspicious else NORMAL_CATEGORY_POOL)
+            if suspicious:
+                amount = round(float(user["avg_amount"]) * random.uniform(6.0, 11.0), 2)
+                location = random.choice(SUSPICIOUS_CITIES)
+                hour = random.choice([1, 2, 3, 4, 23])
+                is_new_device = True
+                channel = "web"
+            else:
+                amount = round(float(user["avg_amount"]) * random.uniform(0.3, 1.8), 2)
+                location = user["home_city"] if random.random() < 0.82 else random.choice(LOW_RISK_CITIES)
+                hour = random.randint(7, 22)
+                is_new_device = False
+                channel = random.choice(["mobile_app", "mobile_app", "mobile_app", "web", "atm"])
+            tx_input = {
+                "amount": amount, "hour": hour, "location": location,
+                "merchant_type": category, "is_new_device": is_new_device,
+                "tx_velocity_1h": random.choice([0, 0, 0, 1, 2]),
+                "is_weekend": int(moment.weekday() >= 5),
+            }
+            verdict = engine.predict(tx_input, profile)
+            risk = float(verdict["risk_score"])
+            return {
+                "id": new_id("tx", 12),
+                "user_id": user["user_id"],
+                "amount": amount,
+                "currency": BASE_CURRENCY,
+                "merchant": random.choice(MERCHANTS_BY_CATEGORY.get(category, ["Marchand"])),
+                "merchant_type": category,
+                "location": location,
+                "hour": hour,
+                "channel": channel,
+                "device_id": f"dev_{user['user_id']}_principal" if not is_new_device else new_id("dev", 6),
+                "is_new_device": int(is_new_device),
+                "risk_score": risk,
+                "risk_level": verdict["risk_level"],
+                "decision": "ACCEPTED_AFTER_OTP" if risk >= RISK_CHALLENGE_THRESHOLD else "ACCEPTED",
+                "status": "approved",
+                "factors": verdict["factors"],
+                "components": verdict["components"],
+                "auth_code": new_auth_code(),
+                "is_anomaly": bool(risk >= 60),
+                "created_at": moment.isoformat(timespec="seconds"),
+            }
+
+        transactions: List[Dict[str, Any]] = []
+        for day in range(days, 0, -1):
+            for _ in range(random.choice([1, 1, 2])):
+                moment = datetime.now() - timedelta(days=day, hours=random.randint(0, 23),
+                                                    minutes=random.randint(0, 59))
+                transactions.append(make_tx(moment, random.random() < 0.05))
+        # Garantir au moins une tentative de fraude : l'onglet Alertes reste parlant.
+        if not any(float(tx["risk_score"]) >= 60 for tx in transactions):
+            transactions.append(make_tx(
+                datetime.now() - timedelta(days=max(1, min(days, 7)), hours=3, minutes=17), True))
+        transactions.sort(key=lambda tx: tx["created_at"])
+        store.transactions.extend(transactions)
+    store.transactions.sort(key=lambda tx: tx["created_at"], reverse=True)
+    return store
+
+
+def _load_store() -> DemoStore:
+    """Charge la fixture versionnee, sinon genere un historique (mode autonome)."""
     if DATA_FILE.exists():
         payload = json.loads(DATA_FILE.read_text(encoding="utf-8"))
         return DemoStore(payload["users"], payload["transactions"])
-    users = [
-        {"user_id": "user_001", "name": "Awa Diallo", "email": "awa.diallo@novapay.io",
-         "phone": "+33 6 12 •• •• 42", "home_city": "Paris, FR", "avg_amount": 46.0,
-         "monthly_income": 3250.0, "balance": 4185.75, "currency": "EUR",
-         "card_last4": "4821", "accent": "#8b5cf6"},
-    ]
-    return DemoStore(users, [])
+    with st.spinner("🎲 Génération d'un historique de démonstration (moteur IA)…"):
+        return _seed_demo_store(get_engine())
 
 
 def get_store() -> DemoStore:
-    """Store propre a la session courante.
-
-    Chaque visiteur a sa propre copie des donnees de demonstration : les
-    paiements simules n'affectent donc pas les autres sessions.
-    """
+    """Store propre a la session courante (les paiements n'affectent que vous)."""
     session = st.session_state
     if "store" not in session:
         session["store"] = _load_store()
@@ -376,6 +475,59 @@ def get_store() -> DemoStore:
 def reset_store() -> DemoStore:
     st.session_state["store"] = _load_store()
     return st.session_state["store"]
+
+
+# ---------------------------------------------------------------------------
+# Callbacks MFA
+# Les callbacks s'executent *avant* la re-execution du script : ils peuvent
+# donc modifier librement les cles de widgets (st.session_state.otp_input, ...).
+# ---------------------------------------------------------------------------
+
+
+def _otp_fill() -> None:
+    challenge = st.session_state.get("challenge") or {}
+    st.session_state["otp_input"] = normalize_otp(challenge.get("code", ""))
+    st.session_state.pop("otp_error", None)
+
+
+def _otp_validate() -> None:
+    session = st.session_state
+    challenge = session.get("challenge")
+    if not challenge:
+        return
+    outcome = verify_otp(get_store(), challenge, session.get("otp_input") or "")
+    session["otp_input"] = ""
+    if outcome["ok"]:
+        session["challenge"] = None
+        session["receipt"] = outcome
+        session.pop("otp_error", None)
+    else:
+        session["otp_error"] = outcome["error"]
+        if outcome.get("locked"):
+            session["challenge"] = None
+
+
+def _otp_resend() -> None:
+    session = st.session_state
+    challenge = session.get("challenge")
+    if not challenge:
+        return
+    challenge["code"] = new_auth_code()
+    challenge["expires_at"] = time.time() + OTP_TTL_SECONDS
+    challenge["attempts"] = 0
+    session["otp_input"] = ""
+    session.pop("otp_error", None)
+
+
+def _otp_refuse() -> None:
+    session = st.session_state
+    challenge = session.get("challenge")
+    tx = get_store().tx_by_id(challenge["tx_id"]) if challenge else None
+    if tx is not None and tx["status"] == "pending_auth":
+        tx["status"], tx["decision"] = "declined", "REFUSED_BY_CUSTOMER"
+    session["challenge"] = None
+    session["otp_input"] = ""
+    session.pop("otp_error", None)
 
 
 # ===========================================================================
@@ -388,13 +540,12 @@ def score_transaction(store: DemoStore, engine: FraudEngine, payload: Dict[str, 
     """Score IA + explications (sans aucune ecriture)."""
     amount_eur = to_base(payload["amount"], payload.get("currency") or BASE_CURRENCY)
     location = payload.get("location") or resolve_location(payload.get("country"), user["home_city"])
-    is_new_device = bool(payload.get("is_new_device"))
     tx_input = {
         "amount": amount_eur,
         "hour": int(payload.get("hour") if payload.get("hour") is not None else datetime.now().hour),
         "location": location,
         "merchant_type": payload.get("merchant_type") or "ecommerce",
-        "is_new_device": is_new_device,
+        "is_new_device": bool(payload.get("is_new_device")),
         "tx_velocity_1h": store.velocity_1h(user["user_id"]),
         "is_weekend": int(datetime.now().weekday() >= 5),
     }
@@ -422,7 +573,8 @@ def process_payment(store: DemoStore, engine: FraudEngine, payload: Dict[str, An
         "user_id": user["user_id"],
         "amount": round(amount_eur, 2),
         "currency": BASE_CURRENCY,
-        "merchant": payload.get("merchant") or random.choice(MERCHANTS_BY_CATEGORY.get(payload["merchant_type"], ["Marchand"])),
+        "merchant": payload.get("merchant") or random.choice(
+            MERCHANTS_BY_CATEGORY.get(payload["merchant_type"], ["Marchand"])),
         "merchant_type": payload["merchant_type"],
         "location": verdict["location"],
         "hour": int(payload.get("hour") if payload.get("hour") is not None else datetime.now().hour),
@@ -431,6 +583,7 @@ def process_payment(store: DemoStore, engine: FraudEngine, payload: Dict[str, An
         "is_new_device": int(bool(payload.get("is_new_device"))),
         "risk_score": risk,
         "risk_level": verdict["risk_level"],
+        "risk_label": verdict["risk_label"],
         "decision": verdict["decision"],
         "status": "approved",
         "factors": localize_factors(verdict["factors"], display),
@@ -488,7 +641,8 @@ def verify_otp(store: DemoStore, challenge: Dict[str, Any], code_input: str) -> 
         remaining = OTP_MAX_ATTEMPTS - challenge["attempts"]
         if remaining <= 0:
             tx["status"], tx["decision"] = "declined", "BLOCKED"
-            return {"ok": False, "locked": True, "error": "Trop de tentatives : transaction bloquée par sécurité."}
+            return {"ok": False, "locked": True,
+                    "error": "Trop de tentatives : transaction bloquée par sécurité."}
         return {"ok": False, "error": f"Code MFA invalide. Tentatives restantes : {remaining}."}
 
     tx["status"], tx["decision"], tx["auth_code"] = "approved", "ACCEPTED_AFTER_OTP", challenge["code"]
@@ -502,113 +656,24 @@ def verify_otp(store: DemoStore, challenge: Dict[str, Any], code_input: str) -> 
     }
 
 
-# ---------------------------------------------------------------------------
-# Callbacks MFA
-# Les callbacks s'executent *avant* la re-execution du script : ils peuvent
-# donc modifier librement les cles de widgets (st.session_state.otp_input, ...).
-# ---------------------------------------------------------------------------
-
-
-def _otp_fill() -> None:
-    challenge = st.session_state.get("challenge") or {}
-    st.session_state["otp_input"] = normalize_otp(challenge.get("code", ""))
-    st.session_state.pop("otp_error", None)
-
-
-def _otp_validate() -> None:
-    session = st.session_state
-    challenge = session.get("challenge")
-    if not challenge:
-        return
-    outcome = verify_otp(get_store(), challenge, session.get("otp_input") or "")
-    session["otp_input"] = ""
-    if outcome["ok"]:
-        session["challenge"] = None
-        session["receipt"] = outcome
-        session.pop("otp_error", None)
-    else:
-        session["otp_error"] = outcome["error"]
-        if outcome.get("locked"):
-            session["challenge"] = None
-
-
-def _otp_resend() -> None:
-    session = st.session_state
-    challenge = session.get("challenge")
-    if not challenge:
-        return
-    challenge["code"] = new_auth_code()
-    challenge["expires_at"] = time.time() + OTP_TTL_SECONDS
-    challenge["attempts"] = 0
-    session["otp_input"] = ""
-    session.pop("otp_error", None)
-
-
-def _otp_refuse() -> None:
-    session = st.session_state
-    challenge = session.get("challenge")
-    tx = get_store().tx_by_id(challenge["tx_id"]) if challenge else None
-    if tx is not None and tx["status"] == "pending_auth":
-        tx["status"], tx["decision"] = "declined", "REFUSED_BY_CUSTOMER"
-    session["challenge"] = None
-    session["otp_input"] = ""
-    session.pop("otp_error", None)
-
-
 # ===========================================================================
-# Composants d'interface
+# Composants d'interface (100 % natifs Streamlit)
 # ===========================================================================
 
-CSS = """
-<style>
-  .block-container { padding-top: 2.2rem; }
-  .nova-code {
-      font-family: 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .18em;
-      background: linear-gradient(135deg, rgba(139,92,246,.28), rgba(34,211,238,.18));
-      border: 1px dashed rgba(167,139,250,.6); border-radius: 16px;
-      padding: 14px 18px; text-align: center; margin-top: 6px;
-  }
-  .nova-code .label { font-size: .68rem; text-transform: uppercase; letter-spacing: .18em; color: #c4b5fd; }
-  .nova-code .value { font-size: 2rem; font-weight: 800; color: #ffffff; margin-top: 4px; }
-  .nova-reason {
-      background: rgba(244,63,94,.10); border: 1px solid rgba(244,63,94,.28);
-      border-radius: 12px; padding: 10px 14px; margin-top: 8px; font-size: .85rem;
-  }
-  .nova-reason .title { font-size: .65rem; text-transform: uppercase; letter-spacing: .16em; color: #fda4af; }
-  div[data-testid="stMetricValue"] { font-weight: 800; }
-</style>
-"""
+
+def risk_headline(score: float, level: str, fallback: str = "Risque") -> str:
+    """Ligne de risque native : emoji + libellé accentue + score."""
+    return f"{risk_emoji(score)} **{risk_level_label(level, fallback)} · {score:.0f} %**"
 
 
-def apply_theme() -> None:
-    st.set_page_config(
-        page_title="NovaPay AI — Démo Streamlit",
-        page_icon="🛡️",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
-    st.markdown(CSS, unsafe_allow_html=True)
-
-
-def style_fig(fig: go.Figure, height: int = 290) -> go.Figure:
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=8, r=8, t=34, b=8),
-        height=height,
-        font=dict(size=12),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.22, x=0),
-    )
-    return fig
-
-
-def code_chip(code: str, label: str = "Code de sécurité à usage unique (généré par l'IA)") -> str:
-    return (f'<div class="nova-code"><div class="label">{label}</div>'
-            f'<div class="value">{code}</div></div>')
+def show_code(code: str, label: str = "Code de sécurité à usage unique (généré par l'IA)") -> None:
+    st.markdown(f"**{label}**")
+    st.code(code, language=None)
+    st.caption("Ce code à usage unique a autorisé le paiement : il n'est plus réutilisable.")
 
 
 def show_alert_rows(store: DemoStore, user_id: str, display_currency: str, limit: int = 3) -> None:
+    """Historique des tentatives de fraude : heure, montant, motif du blocage."""
     alerts = store.alerts(user_id, limit)
     if not alerts:
         st.info("Aucune tentative de fraude détectée sur ce compte. 🎉")
@@ -624,45 +689,20 @@ def show_alert_rows(store: DemoStore, user_id: str, display_currency: str, limit
         else:
             action = "🔐 Validée après authentification MFA (code à usage unique)"
         with st.container(border=True):
-            head_left, head_right = st.columns([4, 1])
-            head_left.markdown(
-                f"**Alerte #{index} — {alert['merchant']}** &nbsp; "
-                + risk_badge(float(alert["risk_score"]), status_label("approved") if alert["status"] == "approved" else "Tentative"),
-                unsafe_allow_html=True,
-            )
-            head_right.caption(merchant_label(alert["merchant_type"]))
+            head_left, head_right = st.columns([3, 2])
+            head_left.markdown(f"**Alerte #{index} — {alert['merchant']}**  \n"
+                               + risk_headline(float(alert["risk_score"]), alert.get("risk_level"),
+                                               alert.get("risk_label") or "Tentative"))
+            head_right.caption(f"Catégorie : {merchant_label(alert['merchant_type'])}")
             info_left, info_mid, info_right = st.columns(3)
             info_left.markdown(f"🕐 **Heure**  \n{created.strftime('%d/%m/%Y à %H:%M')} ({int(alert['hour']):02d}h)")
-            info_mid.markdown(f"💶 **Montant**  \n{fmt_money(to_display(float(alert['amount']), display_currency), display_currency)}")
+            info_mid.markdown(f"💶 **Montant**  \n"
+                              f"{fmt_money(to_display(float(alert['amount']), display_currency), display_currency)}")
             info_right.markdown(f"🌍 **Lieu**  \n{alert['location']}")
-            st.markdown(
-                f'<div class="nova-reason"><div class="title">Motif du blocage</div>{reason}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown("**Motif du blocage**")
+            for factor in (factors[:2] or [reason]):
+                st.markdown(f"- {factor}")
             st.caption(action + f" · score de risque {float(alert['risk_score']):.0f} %")
-
-
-def security_gauge(score: float) -> go.Figure:
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
-        number={"font": {"size": 34, "color": "#e2e8f0"}, "suffix": "/100"},
-        gauge={
-            "axis": {"range": [0, 100], "tickwidth": 0, "tickcolor": "rgba(0,0,0,0)"},
-            "bar": {"color": risk_color(100 - score), "thickness": 0.28},
-            "bgcolor": "rgba(255,255,255,.06)",
-            "borderwidth": 0,
-            "steps": [
-                {"range": [0, 55], "color": "rgba(244,63,94,.25)"},
-                {"range": [55, 70], "color": "rgba(251,191,36,.18)"},
-                {"range": [70, 85], "color": "rgba(52,211,153,.16)"},
-                {"range": [85, 100], "color": "rgba(52,211,153,.28)"},
-            ],
-        },
-    ))
-    fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                      margin=dict(l=14, r=14, t=10, b=0), height=170)
-    return fig
 
 
 # ===========================================================================
@@ -673,58 +713,52 @@ def security_gauge(score: float) -> go.Figure:
 def render_dashboard_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, Any], currency: str) -> None:
     chart_left, chart_right = st.columns(2)
 
-    # --- Depenses par categorie
+    # --- Depenses par categorie (barres horizontales natives)
     with chart_left:
-        st.subheader("Dépenses par catégorie")
+        st.subheader("Dépenses par catégorie — 30 j")
         rows = store.spend_by_category(user["user_id"])
         if rows:
-            fig = go.Figure(go.Pie(
-                labels=[row["label"] for row in rows[:8]],
-                values=[to_display(row["amount"], currency) for row in rows[:8]],
-                hole=0.58,
-                marker=dict(colors=CAT_CHART_COLORS, line=dict(color="rgba(5,7,15,.9)", width=2)),
-                textinfo="percent",
-                hovertemplate="%{label}<br>%{value:.2f} " + currency + "<extra></extra>",
-            ))
-            st.plotly_chart(style_fig(fig, 320), width="stretch")
-            st.caption(f"30 derniers jours · montants en {currency}")
+            series = pd.Series(
+                {row["label"]: to_display(row["amount"], currency) for row in rows[:8]},
+                name=f"Montant ({currency})",
+            )
+            st.bar_chart(series, horizontal=True, height=330)
+            st.caption(f"Montants en {currency} · 30 derniers jours")
         else:
             st.info("Aucune dépense sur les 30 derniers jours.")
 
-    # --- Activite par heure
+    # --- Activite par heure (une couleur par periode via color=)
     with chart_right:
         st.subheader("Activité par heure")
         hours = store.hourly_activity(user["user_id"])
-        colors = ["rgba(244,63,94,.75)" if (h >= 23 or h <= 5) else "rgba(139,92,246,.75)" for h in range(24)]
-        fig = go.Figure(go.Bar(x=[f"{h}h" for h in range(24)], y=hours, marker_color=colors))
-        fig.update_layout(xaxis=dict(showgrid=False), yaxis=dict(gridcolor="rgba(255,255,255,.06)", title=None))
-        st.plotly_chart(style_fig(fig, 320), width="stretch")
-        st.caption("Plages sensibles 23h–5h surlignées en rouge")
+        frame = pd.DataFrame({
+            "Heure": [f"{hour:02d}h" for hour in range(24)],
+            "Transactions": hours,
+            "Période": ["🌙 Nuit (23h-5h)" if (hour >= 23 or hour <= 5) else "☀️ Jour" for hour in range(24)],
+        })
+        st.bar_chart(frame, x="Heure", y="Transactions", color="Période", height=330)
+        st.caption("Les transactions nocturnes (plage sensible) sont mises en évidence.")
 
     # --- Tendance 14 jours + anomalies
     st.subheader("Analyse comportementale — 14 jours")
     trend = store.daily_trend(user["user_id"])
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=[row["date"] for row in trend], y=[to_display(row["amount"], currency) for row in trend],
-        mode="lines+markers", name="Dépenses", line=dict(color="#a78bfa", width=2.5),
-        fill="tozeroy", fillcolor="rgba(139,92,246,.22)",
-        hovertemplate="%{x}<br>%{y:.2f} " + currency + "<extra></extra>",
-    ))
-    anomalies = [row for row in trend if row["anomalies"]]
-    if anomalies:
-        fig.add_trace(go.Scatter(
-            x=[row["date"] for row in anomalies], y=[to_display(row["amount"], currency) for row in anomalies],
-            mode="markers", name="Anomalies IA",
-            marker=dict(color="#f43f5e", size=13, line=dict(color="white", width=2)),
-            hovertemplate="%{x}<br>%{customdata} anomalie(s) IA<extra></extra>",
-            customdata=[row["anomalies"] for row in anomalies],
-        ))
-    fig.update_layout(xaxis=dict(showgrid=False), yaxis=dict(gridcolor="rgba(255,255,255,.06)"))
-    st.plotly_chart(style_fig(fig, 320), width="stretch")
-    st.caption(f"Montants en {currency} · les points rouges signalent les jours avec au moins une anomalie IA")
+    trend_frame = pd.DataFrame({
+        "Date": [row["date"] for row in trend],
+        f"Dépenses ({currency})": [to_display(row["amount"], currency) for row in trend],
+        "Anomalies IA": [row["anomalies"] for row in trend],
+    }).set_index("Date")
+    trend_left, trend_right = st.columns([2, 1])
+    trend_left.area_chart(trend_frame[[f"Dépenses ({currency})"]], height=280)
+    anomalies_total = int(trend_frame["Anomalies IA"].sum())
+    with trend_right:
+        if anomalies_total > 0:
+            st.bar_chart(trend_frame[["Anomalies IA"]], height=280)
+        else:
+            st.info("✨ Aucune anomalie (risque ≥ 60 %) détectée sur les 14 derniers jours.")
+    st.caption("Points de contrôle : le graphique de droite comptabilise les transactions "
+               "à risque élevé (≥ 60 %) détectées chaque jour.")
 
-    # --- Transactions
+    # --- Transactions recentes
     st.subheader("Dernières transactions")
     txs = store.txs(user["user_id"], 20)
     if not txs:
@@ -737,15 +771,15 @@ def render_dashboard_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, 
             "Catégorie": merchant_label(tx["merchant_type"]),
             "Lieu": tx["location"],
             "Montant": fmt_money(to_display(float(tx["amount"]), currency), currency),
-            "Risque": round(float(tx["risk_score"]), 1),
+            "Risque": f"{risk_emoji(float(tx['risk_score']))} {float(tx['risk_score']):.0f} %",
             "Statut": status_label(tx["status"]),
+            "Canal": channel_label(tx.get("channel") or "mobile_app"),
             "Code d'autorisation": tx.get("auth_code") or "—",
         }
         for tx in txs
     ])
-    styled = table.style.map(lambda value: f"color:{risk_color(float(value))};font-weight:700", subset=["Risque"])
-    st.dataframe(styled, width="stretch", hide_index=True)
-    st.caption("Cliquez sur un en-tête pour trier · le code d'autorisation n'est généré que pour les paiements validés.")
+    st.dataframe(table, width="stretch", hide_index=True)
+    st.caption("Cliquez sur un en-tête pour trier · un code d'autorisation n'est généré que pour les paiements validés.")
 
     # --- Detail d'une transaction
     with st.expander("🔎 Détail d'une transaction (score, facteurs, décomposition)"):
@@ -754,19 +788,24 @@ def render_dashboard_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, 
             f"({fmt_money(to_display(float(tx['amount']), currency), currency)})": tx
             for index, tx in enumerate(txs)
         }
-        chosen = st.selectbox("Transaction", list(options), key="detail_tx")
+        labels = list(options)
+        if st.session_state.get("detail_tx") not in labels:
+            st.session_state["detail_tx"] = labels[0]
+        chosen = st.selectbox("Transaction", labels, key="detail_tx")
         tx = options[chosen]
-        comp = tx.get("components") or {}
+        score = float(tx["risk_score"])
         col_a, col_b, col_c = st.columns(3)
-        col_a.metric("Score de risque", f"{float(tx['risk_score']):.0f} %")
+        col_a.metric("Score de risque", f"{score:.0f} %")
         col_b.metric("Statut", status_label(tx["status"]))
-        col_c.metric("Décision", tx["decision"])
+        col_c.metric("Canal", channel_label(tx.get("channel") or "mobile_app"))
+        st.markdown(risk_headline(score, tx.get("risk_level"), tx.get("risk_label") or "Risque"))
         if tx.get("auth_code"):
-            st.markdown(code_chip(tx["auth_code"]), unsafe_allow_html=True)
+            st.markdown(f"Code d'autorisation : `{tx['auth_code']}`")
+        components = tx.get("components") or {}
         for key, label in (("random_forest", "RandomForest"), ("isolation_forest", "IsolationForest"),
                            ("rules", "Règles métier"), ("business_rules", "Règles métier")):
-            if key in comp:
-                value = float(comp[key])
+            if key in components:
+                value = float(components[key])
                 if value <= 1.0:          # les composantes brutes sont dans [0, 1]
                     value *= 100.0
                 st.progress(min(1.0, value / 100.0), text=f"{label} : {value:.1f} %")
@@ -779,9 +818,10 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
     symbol = currency_info(currency)["symbol"]
     category_keys = list(MERCHANT_CATEGORIES.keys())
     country_codes = [item["code"] for item in COUNTRIES]
-    country_names = {item["code"]: f"{item['name']} · risque {item['risk_hint'] * 100:.0f} %" for item in COUNTRIES}
+    country_names = {item["code"]: f"{item['name']} · risque {item['risk_hint'] * 100:.0f} %"
+                     for item in COUNTRIES}
 
-    # --- Initialisation des champs du simulateur (valeurs par defaut propres au client)
+    # --- Initialisation des champs du simulateur (valeurs par defaut par client)
     session = st.session_state
     if session.get("sim_user") != user["user_id"]:
         session["sim_user"] = user["user_id"]
@@ -799,60 +839,58 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
     if session["sim_country"] not in country_codes:
         session["sim_country"] = "FR"
 
-    # --- Bandeau des transactions en attente de MFA
+    # --- Transactions en attente d'authentification
     pending = [tx for tx in store.txs(user["user_id"]) if tx["status"] == "pending_auth"]
-    if pending and not st.session_state.get("challenge"):
+    if pending and not session.get("challenge"):
         tx = pending[0]
         st.warning(f"⏳ Une transaction attend une authentification : {tx['merchant']} — "
                    f"{fmt_money(to_display(float(tx['amount']), currency), currency)}.")
         if st.button("Recevoir un code MFA", key="resume_challenge"):
-            code = new_auth_code()
-            st.session_state["challenge"] = {
-                "tx_id": tx["id"], "code": code, "expires_at": time.time() + OTP_TTL_SECONDS,
+            session["challenge"] = {
+                "tx_id": tx["id"], "code": new_auth_code(),
+                "expires_at": time.time() + OTP_TTL_SECONDS,
                 "attempts": 0, "masked_phone": user["phone"],
             }
-            st.session_state["receipt"] = None
+            session["receipt"] = None
             st.toast("Nouveau code de sécurité envoyé (simulation SMS).", icon="📩")
             st.rerun()
 
     # ============================================================== Recu final
-    receipt = st.session_state.get("receipt")
+    receipt = session.get("receipt")
     if receipt:
         tx = receipt["transaction"]
+        st.success("✅ Paiement autorisé — transaction débitée.")
         with st.container(border=True):
-            st.success("✅ Paiement autorisé — transaction débitée.")
             col_a, col_b, col_c, col_d = st.columns(4)
             col_a.metric("Montant", fmt_money(to_display(float(tx["amount"]), currency), currency))
             col_b.metric("Marchand", tx["merchant"])
             col_c.metric("Score de risque IA", f"{float(tx['risk_score']):.0f} %")
             col_d.metric("Nouveau solde",
                          fmt_money(to_display(float(store.user(user["user_id"])["balance"]), currency), currency))
+            st.markdown(risk_headline(float(tx["risk_score"]), tx.get("risk_level"), tx.get("risk_label") or "Risque"))
             st.caption(f"{merchant_label(tx['merchant_type'])} · {tx['location']} · "
                        f"{datetime.fromisoformat(tx['created_at']).strftime('%d/%m/%Y à %H:%M')} · "
                        f"{'validé après MFA' if tx['decision'] == 'ACCEPTED_AFTER_OTP' else 'validé automatiquement (risque faible)'}")
             if receipt.get("authorization_code"):
-                st.markdown(code_chip(receipt["authorization_code"]), unsafe_allow_html=True)
-                st.caption("Ce code à usage unique a autorisé le paiement : il n'est plus réutilisable.")
+                show_code(receipt["authorization_code"])
         if st.button("🔄 Nouvelle simulation", key="receipt_new"):
-            st.session_state["receipt"] = None
+            session["receipt"] = None
             st.rerun()
         return
 
     # ============================================================== Defi MFA
-    challenge = st.session_state.get("challenge")
+    challenge = session.get("challenge")
     if challenge:
         tx = store.tx_by_id(challenge["tx_id"])
         if tx is None or tx["status"] != "pending_auth":
-            st.session_state["challenge"] = None
+            session["challenge"] = None
             st.rerun()
         with st.container(border=True):
             st.subheader("🔐 Authentification dynamique (MFA)")
             st.caption("L'IA a détecté un risque élevé : saisissez le code à usage unique envoyé par SMS.")
-            st.markdown(
-                f"Transaction de **{fmt_money(to_display(float(tx['amount']), currency), currency)}** "
-                f"chez **{tx['merchant']}** à {tx['location']} — "
-                f"score de risque **{float(tx['risk_score']):.0f} %**."
-            )
+            st.markdown(f"Transaction de **{fmt_money(to_display(float(tx['amount']), currency), currency)}** "
+                        f"chez **{tx['merchant']}** à {tx['location']} — "
+                        f"score de risque **{float(tx['risk_score']):.0f} %**.")
             sms_col, fill_col = st.columns([3, 1])
             sms_col.info(f"📩 **Simulation SMS** — code reçu : `{challenge['code']}` "
                          f"(destinataire {challenge['masked_phone']})", icon="📱")
@@ -873,8 +911,8 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
                 st.progress(min(1.0, remaining / OTP_TTL_SECONDS),
                             text=f"⏳ Code valable encore {remaining // 60:02d}:{remaining % 60:02d}")
 
-            if st.session_state.get("otp_error"):
-                st.error(st.session_state["otp_error"])
+            if session.get("otp_error"):
+                st.error(session["otp_error"])
 
             st.text_input("Code MFA (format OTP-1234)", key="otp_input",
                           placeholder="1234", max_chars=8,
@@ -889,13 +927,13 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
         return
 
     # ============================================================ Formulaire
-    st.caption("Le **score de risque est calculé en temps réel** : chaque modification des champs "
-               "met à jour l'analyse IA instantanément.")
+    st.caption("Le **score de risque est calculé en temps réel** : chaque modification "
+               "des champs met à jour l'analyse IA instantanément.")
 
     quick_left, quick_right, quick_hint = st.columns([1, 1, 2])
     if quick_left.button("🟢 Scénario normal", width="stretch"):
         category = random.choice(NORMAL_CATEGORY_POOL)
-        st.session_state.update({
+        session.update({
             "sim_amount": round(float(user["avg_amount"]) * random.uniform(0.6, 1.2), 2),
             "sim_merchant": random.choice(MERCHANTS_BY_CATEGORY[category]),
             "sim_category": category,
@@ -905,12 +943,13 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
         })
         st.rerun()
     if quick_right.button("🔴 Scénario suspect", width="stretch"):
-        category = random.choice(SUSPICIOUS_CATEGORY_POOL)
-        st.session_state.update({
+        category = random.choice(RISKY_CATEGORY_POOL)
+        session.update({
             "sim_amount": round(float(user["avg_amount"]) * random.uniform(6.0, 12.0), 2),
             "sim_merchant": random.choice(MERCHANTS_BY_CATEGORY[category]),
             "sim_category": category,
-            "sim_country": random.choice(["RU", "PA", "HK", "NG", "AE"]),
+            "sim_country": random.choice([code for code in ("RU", "PA", "HK", "NG", "AE")
+                                          if code in country_codes]),
             "sim_hour": random.choice([1, 2, 3, 4, 23]),
             "sim_device": True,
         })
@@ -922,11 +961,9 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
     with form_col:
         amount = st.number_input(f"Montant ({symbol})", min_value=0.5, max_value=10_000_000.0,
                                  step=1.0, format="%.2f", key="sim_amount")
-
         merchant = st.text_input("Marchand", key="sim_merchant",
                                  placeholder="ex : Starbucks, Binance…",
                                  help="Saisissez librement le nom du marchand.")
-
         category = st.selectbox(
             "Catégorie de marchand",
             category_keys,
@@ -934,16 +971,13 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
             key="sim_category",
         )
         st.caption("Suggestions : " + ", ".join(MERCHANTS_BY_CATEGORY.get(category, [])[:4]))
-
         country = st.selectbox("Pays de la transaction", country_codes,
                                format_func=lambda code: country_names[code], key="sim_country")
-
         hour = st.slider("Heure de la transaction", 0, 23, key="sim_hour")
         device_col, channel_col = st.columns(2)
         is_new_device = device_col.checkbox("Appareil non reconnu", key="sim_device")
-        channel = channel_col.selectbox("Canal", ["mobile_app", "web", "atm", "api"], key="sim_channel",
-                                        format_func=lambda value: {"mobile_app": "Application mobile", "web": "Web",
-                                                                   "atm": "Distributeur", "api": "API"}[value])
+        channel = channel_col.selectbox("Canal", list(CHANNEL_LABELS.keys()), key="sim_channel",
+                                        format_func=channel_label)
 
     # --------------------------------------------------- Score temps reel
     payload = {
@@ -959,7 +993,7 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
             st.markdown("##### 🧠 Score de risque IA — *temps réel*")
             st.metric("Risque estimé", f"{risk:.0f} %")
             st.progress(min(1.0, risk / 100.0))
-            st.markdown(risk_badge(risk, risk_level_label(verdict["risk_level"], verdict["risk_label"])), unsafe_allow_html=True)
+            st.markdown(risk_headline(risk, verdict["risk_level"], verdict["risk_label"]))
             if risk >= AUTO_BLOCK_THRESHOLD:
                 st.error("🚫 Blocage automatique (risque critique).")
             elif risk >= RISK_CHALLENGE_THRESHOLD:
@@ -975,11 +1009,11 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
     if st.button("💳 Analyser & payer", type="primary", width="stretch", key="submit_payment"):
         result = process_payment(store, engine, payload)
         if result["status"] == "approved":
-            st.session_state["receipt"] = result
+            session["receipt"] = result
             st.toast(f"Paiement validé (risque {result['risk_score']:.0f} %).", icon="✅")
             st.balloons()
         elif result["status"] == "pending_auth":
-            st.session_state["challenge"] = {
+            session["challenge"] = {
                 "tx_id": result["transaction"]["id"],
                 "code": result["otp_challenge"]["code"],
                 "expires_at": result["otp_challenge"]["expires_at"],
@@ -995,47 +1029,34 @@ def render_payment_tab(store: DemoStore, engine: FraudEngine, user: Dict[str, An
 def render_alerts_tab(store: DemoStore, user: Dict[str, Any], currency: str) -> None:
     st.subheader("🚨 Historique des alertes")
     st.caption("Tentatives de fraude détectées par l'IA — heure, montant et motif du blocage.")
-    alerts = store.alerts(user["user_id"], 3)
     show_alert_rows(store, user["user_id"], currency, limit=3)
-    total = len([t for t in store.txs(user["user_id"])
-                 if float(t["risk_score"] or 0) >= 60 or t["status"] in ("declined", "expired")])
+    total = store.count_alerts(user["user_id"])
     if total > 3:
         with st.expander(f"Voir plus d'alertes ({total} au total)"):
             show_alert_rows(store, user["user_id"], currency, limit=min(total, 20))
-    if alerts:
-        st.caption("Rappel : toute transaction ≥ 30 % de risque exige une authentification dynamique "
-                   "(code OTP-XXXX). Les tentatives bloquées n'ont donné lieu à aucun débit.")
+    st.caption("Rappel : toute transaction ≥ 30 % de risque exige une authentification dynamique "
+               "(code OTP-XXXX). Les tentatives bloquées n'ont donné lieu à aucun débit.")
 
 
 def render_analytics_tab(store: DemoStore, user: Dict[str, Any], currency: str) -> None:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader("Distribution du risque (20 dernières transactions)")
-        txs = store.txs(user["user_id"], 20)
-        buckets = {"Faible (<30 %)": 0, "Modéré (30-59 %)": 0, "Élevé (60-84 %)": 0, "Critique (≥85 %)": 0}
-        for tx in txs:
-            score = float(tx["risk_score"] or 0)
-            key = "Faible (<30 %)" if score < 30 else "Modéré (30-59 %)" if score < 60 else "Élevé (60-84 %)" if score < 85 else "Critique (≥85 %)"
-            buckets[key] += 1
-        fig = go.Figure(go.Bar(
-            x=list(buckets.values()), y=list(buckets.keys()), orientation="h",
-            marker_color=["#34d399", "#fbbf24", "#fb923c", "#f43f5e"],
-            text=list(buckets.values()), textposition="auto",
-        ))
-        fig.update_layout(xaxis=dict(gridcolor="rgba(255,255,255,.06)"), yaxis=dict(autorange="reversed"))
-        st.plotly_chart(style_fig(fig, 280), width="stretch")
+        st.subheader("Distribution du risque — 20 dernières transactions")
+        st.bar_chart(pd.DataFrame(store.risk_buckets(user["user_id"])),
+                     x="Niveau", y="Transactions", color="Niveau", horizontal=True, height=300)
 
     with col_right:
         st.subheader("Dépenses 30 jours par catégorie")
         rows = store.spend_by_category(user["user_id"])
         if rows:
             table = pd.DataFrame([
-                {"Catégorie": row["label"], "Montant": fmt_money(to_display(row["amount"], currency), currency),
+                {"Catégorie": row["label"],
+                 "Montant": fmt_money(to_display(row["amount"], currency), currency),
                  "Transactions": row["count"]}
                 for row in rows
             ])
-            st.dataframe(table, width="stretch", hide_index=True, height=280)
+            st.dataframe(table, width="stretch", hide_index=True, height=300)
         else:
             st.info("Aucune dépense sur la période.")
 
@@ -1054,13 +1075,15 @@ def render_analytics_tab(store: DemoStore, user: Dict[str, Any], currency: str) 
 def render_ai_tab(engine: FraudEngine, store: DemoStore, user: Dict[str, Any]) -> None:
     info = engine.info()
     metrics = info.get("metrics") or {}
+
     st.subheader("🤖 Moteur IA hybride")
     st.markdown(
         "Trois modèles combinés : **RandomForest** (classification supervisée, 240 arbres), "
         "**IsolationForest** (détection d'anomalies entraînée sur les seules transactions légitimes) "
-        "et un **moteur de règles métier** (explicabilité + garde-fous).\n\n"
-        "```\nscore = 100 × ( 0,46 × P(RandomForest) + 0,34 × P(IsolationForest) + 0,20 × Score de règles )^1,22\n```"
+        "et un **moteur de règles métier** (explicabilité + garde-fous)."
     )
+    st.code("score = 100 × ( 0,46 × P(RandomForest) + 0,34 × P(IsolationForest) + 0,20 × Score de règles )^1,22",
+            language=None)
 
     col_a, col_b, col_c, col_d = st.columns(4)
     col_a.metric("AUC-ROC", f"{metrics.get('auc_roc', 0):.3f}")
@@ -1078,7 +1101,7 @@ def render_ai_tab(engine: FraudEngine, store: DemoStore, user: Dict[str, Any]) -
     st.caption(" · ".join(details))
 
     st.subheader("Performances sur le jeu de test")
-    performance = [
+    st.dataframe(pd.DataFrame([
         {"Métrique": "AUC-ROC", "Valeur": f"{metrics.get('auc_roc', 0):.4f}"},
         {"Métrique": "Précision (fraudes)", "Valeur": f"{metrics.get('precision', 0):.4f}"},
         {"Métrique": "Rappel (fraudes)", "Valeur": f"{metrics.get('recall', 0):.4f}"},
@@ -1086,29 +1109,27 @@ def render_ai_tab(engine: FraudEngine, store: DemoStore, user: Dict[str, Any]) -
         {"Métrique": "Score moyen — transactions légitimes", "Valeur": f"{metrics.get('mean_score_legit', 0):.1f} %"},
         {"Métrique": "Score moyen — transactions frauduleuses", "Valeur": f"{metrics.get('mean_score_fraud', 0):.1f} %"},
         {"Métrique": "Seuil d'authentification dynamique", "Valeur": f"{info.get('threshold', RISK_CHALLENGE_THRESHOLD):.0f} %"},
-    ]
-    st.dataframe(pd.DataFrame(performance), width="stretch", hide_index=True)
+    ]), width="stretch", hide_index=True)
 
     st.subheader("Variables les plus déterminantes")
     importances = info.get("feature_importances") or {}
     if importances:
-        top = sorted(importances.items(), key=lambda kv: kv[1], reverse=True)[:8]
-        fig = go.Figure(go.Bar(
-            x=[value * 100 for _, value in top],
-            y=[FEATURE_LABELS.get(key, key) for key, _ in top],
-            orientation="h",
-            marker_color="#8b5cf6",
-            text=[f"{value * 100:.1f} %" for _, value in top], textposition="auto",
-        ))
-        fig.update_layout(xaxis=dict(gridcolor="rgba(255,255,255,.06)"), yaxis=dict(autorange="reversed"))
-        st.plotly_chart(style_fig(fig, 330), width="stretch")
+        top = sorted(importances.items(), key=lambda item: item[1], reverse=True)[:8]
+        series = pd.Series({FEATURE_LABELS.get(key, key): round(value * 100, 2) for key, value in top},
+                           name="Importance (%)")
+        st.bar_chart(series, horizontal=True, height=330)
+        st.caption("Importance relative (impureté de Gini) des variables du RandomForest.")
 
     st.subheader("Seuils de décision")
     st.dataframe(pd.DataFrame([
-        {"Score de risque": "< 30 %", "Niveau": "Faible", "Décision": "✅ Validation automatique + code d'autorisation"},
-        {"Score de risque": "30 – 59 %", "Niveau": "Modéré", "Décision": "🔐 Authentification dynamique (OTP-XXXX)"},
-        {"Score de risque": "60 – 84 %", "Niveau": "Élevé", "Décision": "🔐 OTP + signalement dans les alertes"},
-        {"Score de risque": "≥ 85 %", "Niveau": "Critique", "Décision": "🔐 OTP (blocage automatique activable)"},
+        {"Score de risque": "< 30 %", "Niveau": "🟢 Faible",
+         "Décision": "✅ Validation automatique + code d'autorisation"},
+        {"Score de risque": "30 – 59 %", "Niveau": "🟡 Modéré",
+         "Décision": "🔐 Authentification dynamique (OTP-XXXX)"},
+        {"Score de risque": "60 – 84 %", "Niveau": "🟠 Élevé",
+         "Décision": "🔐 OTP + signalement dans les alertes"},
+        {"Score de risque": "≥ 85 %", "Niveau": "🔴 Critique",
+         "Décision": "🔐 OTP (blocage automatique activable)"},
     ]), width="stretch", hide_index=True)
 
     security = store.security(user["user_id"])
@@ -1123,19 +1144,20 @@ def render_ai_tab(engine: FraudEngine, store: DemoStore, user: Dict[str, Any]) -
 
 
 def main() -> None:
-    apply_theme()
+    st.set_page_config(
+        page_title="NovaPay AI — Prototype FinTech",
+        page_icon="🛡️",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
     engine = get_engine()
     store = get_store()
 
-    if not DATA_FILE.exists():
-        st.warning("⚠️ Fixture `demo_data.json` introuvable — lancez `python export_demo.py` "
-                   "pour générer l'historique de démonstration.", icon="📦")
-
     # ---------------------------------------------------------------- session
     session = st.session_state
-    session.setdefault("user_select", "user_001")
-    session.setdefault("currency_select", "EUR")
+    session.setdefault("user_select", DEFAULT_USERS[0]["user_id"])
+    session.setdefault("currency_select", BASE_CURRENCY)
     session.setdefault("challenge", None)
     session.setdefault("receipt", None)
 
@@ -1149,7 +1171,7 @@ def main() -> None:
 
     # ---------------------------------------------------------------- sidebar
     with st.sidebar:
-        st.markdown("## 🛡️ NovaPay AI")
+        st.title("🛡️ NovaPay AI")
         st.caption("Prototype FinTech — détection de fraude IA & MFA dynamique")
 
         user_id = st.selectbox(
@@ -1167,28 +1189,30 @@ def main() -> None:
         if currency != BASE_CURRENCY:
             st.caption(f"1 € = {currency_info(currency)['rate']:.2f} {currency} (taux fixe de démonstration)")
 
-        security = store.security(user["user_id"])
+        security = store.security(user_id)
+        st.divider()
         st.markdown("### Score de sécurité")
-        st.plotly_chart(security_gauge(security["score"]), width="stretch")
-        level_labels = {"excellent": "Excellent", "bon": "Bon", "moyen": "Moyen", "fragile": "Fragile"}
-        st.caption(f"**{level_labels.get(security['level'], security['level'])}** · "
-                   f"{security['incidents']} incident(s) récent(s) · risque moyen {security['avg_risk']} %")
+        st.metric("Score", f"{security['score']}/100", delta=security["level"].capitalize(),
+                  delta_color="off")
+        st.progress(min(1.0, security["score"] / 100.0))
+        st.caption(f"{security['incidents']} incident(s) récent(s) · risque moyen {security['avg_risk']} %")
 
         st.divider()
         st.markdown("### Moteur IA")
         info = engine.info()
-        st.caption(f"AUC-ROC **{info.get('metrics', {}).get('auc_roc', float('nan')):.3f}** · "
-                   f"seuil MFA **{RISK_CHALLENGE_THRESHOLD:.0f} %** · "
-                   f"RandomForest + IsolationForest + règles")
+        st.caption(f"AUC-ROC **{info.get('metrics', {}).get('auc_roc', 0):.3f}** · "
+                   f"seuil MFA **{RISK_CHALLENGE_THRESHOLD:.0f} %**")
+        st.caption("RandomForest + IsolationForest + règles métier")
 
         st.divider()
+        st.caption(f"Historique : **{len(store.txs(user_id))} transactions** pour ce client")
         if st.button("♻️ Réinitialiser la démonstration", width="stretch"):
             reset_store()
             session["challenge"] = None
             session["receipt"] = None
             st.toast("Données de démonstration rechargées.", icon="♻️")
             st.rerun()
-        st.caption("Les données sont fictives (fixture `demo_data.json`) — aucun paiement réel.")
+        st.caption("Données fictives — aucun paiement réel.")
 
     # ----------------------------------------------------------------- entete
     title_col, balance_col = st.columns([3, 2])
@@ -1203,12 +1227,11 @@ def main() -> None:
                   delta_color="off")
 
     # ------------------------------------------------------------------- KPI
-    txs_30d = [tx for tx in store.txs(user["user_id"])
-               if tx["created_at"] >= (datetime.now() - timedelta(days=30)).isoformat(timespec="seconds")
-               and tx["status"] == "approved"]
+    cutoff_30d = (datetime.now() - timedelta(days=30)).isoformat(timespec="seconds")
+    txs_30d = [tx for tx in store.txs(user_id) if tx["created_at"] >= cutoff_30d and tx["status"] == "approved"]
     spend_30d = sum(float(tx["amount"]) for tx in txs_30d)
     avg_risk = sum(float(tx["risk_score"] or 0) for tx in txs_30d) / len(txs_30d) if txs_30d else 0.0
-    alerts_30d = sum(1 for tx in txs_30d if float(tx["risk_score"] or 0) >= 60)
+    alerts_total = store.count_alerts(user_id)
 
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     kpi1.metric("Dépenses 30 j", fmt_money(to_display(spend_30d, currency), currency),
@@ -1218,10 +1241,10 @@ def main() -> None:
                 fmt_money(to_display(spend_30d / len(txs_30d), currency), currency) if txs_30d else "—")
     kpi4.metric("Risque moyen", f"{avg_risk:.1f} %")
     with kpi5:
-        st.metric("Alertes", alerts_30d)
+        st.metric("Alertes", alerts_total)
         if hasattr(st, "dialog"):
             if st.button("🔍 Détail", width="stretch", key="open_alerts"):
-                st.session_state["show_alerts_dialog"] = True
+                session["show_alerts_dialog"] = True
         else:
             st.caption("Voir l'onglet 🚨 Alertes")
         st.caption("tentatives ≥ 60 %")
@@ -1231,7 +1254,7 @@ def main() -> None:
         @st.dialog("🚨 Historique des alertes", width="large")
         def alerts_dialog() -> None:
             st.caption("Les 3 dernières tentatives de fraude détectées par l'IA — heure, montant et motif du blocage.")
-            show_alert_rows(store, user["user_id"], currency, limit=3)
+            show_alert_rows(store, user_id, currency, limit=3)
         session["show_alerts_dialog"] = False
         alerts_dialog()
 
@@ -1253,9 +1276,8 @@ def main() -> None:
         render_ai_tab(engine, store, user)
 
     st.divider()
-    st.caption("NovaPay AI · Proof of Concept — FastAPI + scikit-learn + Streamlit · "
-               "données fictives, usage démonstration uniquement · "
-               "version API complète (Swagger) : `uvicorn main:app`")
+    st.caption("NovaPay AI · Proof of Concept — application 100 % Streamlit (composants natifs) · "
+               "données fictives, usage démonstration uniquement.")
 
 
 main()

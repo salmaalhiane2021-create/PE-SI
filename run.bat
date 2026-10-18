@@ -1,6 +1,7 @@
 @echo off
 REM ============================================================
-REM  NovaPay AI - Lancement du prototype (Windows)
+REM  NovaPay AI - Lancement de l'application Streamlit (Windows)
+REM  (interface entierement construite avec Streamlit : streamlit_app.py)
 REM ============================================================
 setlocal
 cd /d "%~dp0"
@@ -10,16 +11,16 @@ if not exist ".venv\Scripts\python.exe" (
     python -m venv .venv
 )
 
-echo [2/3] Installation des dependances...
+echo [2/3] Installation des dependances (application Streamlit)...
 ".venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
 ".venv\Scripts\python.exe" -m pip install --quiet -r requirements.txt
 
-echo [3/3] Entrainement du modele IA (si necessaire) puis demarrage du serveur...
+echo [3/3] Verification du moteur IA (entrainement si necessaire)...
 ".venv\Scripts\python.exe" ml_model.py --selftest
 
 echo.
-echo   Interface  : http://127.0.0.1:8000
-echo   Swagger    : http://127.0.0.1:8000/docs
+echo   Application : http://localhost:8501
+echo   (version API REST optionnelle : voir requirements-api.txt)
 echo.
-".venv\Scripts\python.exe" -m uvicorn main:app --host 127.0.0.1 --port 8000
+".venv\Scripts\python.exe" -m streamlit run streamlit_app.py
 endlocal

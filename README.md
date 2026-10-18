@@ -7,17 +7,18 @@
 
 | Composant | Technologie |
 |---|---|
-| Backend / API | **FastAPI** + Uvicorn |
+| **Application** | **Streamlit** — interface **100 % composants natifs** (`st.metric`, `st.dataframe`, `st.bar_chart`/`st.line_chart`/`st.area_chart`, `st.tabs`, `st.dialog`, `st.fragment`…) |
 | IA / Machine Learning | **scikit-learn** — `RandomForestClassifier` + `IsolationForest` + règles métier |
-| Frontend | **HTML + Tailwind CSS + Chart.js** (interface React-like, sans build, responsive, multi-devises) |
-| Interface alternative | **Streamlit + Plotly** (`streamlit_app.py`, prête pour un déploiement cloud) |
-| Base de données | **SQLite** (fichier `novapay_demo.db`, créé automatiquement) |
+| Données de démonstration | `demo_data.json` (4 clients, 300 transactions) — **ou générées automatiquement par l'IA** si la fixture est absente |
+| Version API (optionnelle) | **FastAPI** + Uvicorn + front **HTML/Tailwind/Chart.js** (`main.py` + `index.html`) |
+| Base de données (version API) | **SQLite** (fichier `novapay_demo.db`, créé automatiquement) |
 
 ---
 
 ## 1. Aperçu
 
-NovaPay AI simule un compte bancaire complet, enrichi d'un **moteur de détection de fraude** :
+NovaPay AI est une **application Streamlit autonome** (`streamlit_app.py`) qui embarque toute
+l'interface **et** le moteur de détection de fraude, sans serveur externe :
 
 - **Chaque paiement est analysé** (montant, heure, localisation, type de marchand, appareil, vélocité…).
 - **L'IA produit un score de risque de 0 à 100 %** avec une explication en langage naturel.
@@ -25,12 +26,12 @@ NovaPay AI simule un compte bancaire complet, enrichi d'un **moteur de détectio
 - **Risque ≥ 30 %** → **authentification dynamique** : un code à usage unique `OTP-XXXX` est généré et doit être validé.
 - **3 codes erronés** → la transaction est **bloquée définitivement** (protection anti-fraude).
 - **Paiement validé** → un **code de sécurité à usage unique généré par l'IA** est affiché dans le reçu.
-- **Multi-devises** : un sélecteur dans l'en-tête (€ EUR, $ USD, MAD, £ GBP) convertit dynamiquement
-  tous les montants affichés (solde, revenus, dépenses, transactions, alertes).
-- Le **tableau de bord** affiche le solde, les KPI, les graphiques d'analyse comportementale,
-  les anomalies détectées et le **score de sécurité dynamique** du client.
-- La carte **« Alertes » est cliquable** : elle ouvre l'historique des 3 dernières tentatives de
-  fraude (heure, montant, motif du blocage).
+- **Multi-devises** : un sélecteur dans la barre latérale (€ EUR, $ USD, MAD, £ GBP) convertit
+  dynamiquement tous les montants affichés (solde, revenus, dépenses, transactions, alertes).
+- Le **tableau de bord** (onglet 📊) affiche le solde, les KPI, les graphiques d'analyse
+  comportementale natifs, les anomalies détectées et le **score de sécurité dynamique** du client.
+- Le KPI **« Alertes » est cliquable** (bouton 🔍 Détail) : il ouvre une fenêtre (`st.dialog`)
+  avec l'historique des 3 dernières tentatives de fraude (heure, montant, motif du blocage).
 
 ---
 
@@ -38,22 +39,23 @@ NovaPay AI simule un compte bancaire complet, enrichi d'un **moteur de détectio
 
 ```
 PE&SI/
-├── main.py               # Serveur FastAPI : routes REST, base SQLite, pipeline de décision
+├── streamlit_app.py      # ⭐ Application 100 % Streamlit : interface + moteur de décision
 ├── ml_model.py           # Entraînement + prédiction du risque IA (RandomForest + IsolationForest)
-├── index.html            # Interface web principale (Tailwind CSS + Chart.js, JS vanilla)
-├── streamlit_app.py      # Interface alternative 100 % Streamlit (déploiement cloud)
-├── export_demo.py        # Exporte la base SQLite vers demo_data.json (fixture Streamlit)
-├── demo_data.json        # Données de démo (4 clients, 300 transactions) pour Streamlit
-├── requirements.txt      # Dépendances Python
+├── demo_data.json        # Données de démo (4 clients, 300 transactions) chargées par Streamlit
+├── requirements.txt      # Dépendances de l'application Streamlit
+├── requirements-api.txt  # Dépendances de la version API REST (optionnelle)
 ├── .streamlit/
 │   └── config.toml       # Thème sombre + réglages du serveur Streamlit
-├── run.bat               # Lancement automatique (Windows)
-├── run.sh                # Lancement automatique (macOS / Linux)
+├── run.bat               # Lancement automatique de l'app Streamlit (Windows)
+├── run.sh                # Lancement automatique de l'app Streamlit (macOS / Linux)
 ├── artifacts/            # Modèles IA sérialisés (versionnés → démarrage instantané)
 │   ├── random_forest.joblib
 │   ├── isolation_forest.joblib
 │   └── metrics.json
-└── novapay_demo.db       # Base SQLite de démonstration (créée au 1er lancement, non versionnée)
+├── main.py               # (Option) Serveur FastAPI : routes REST + base SQLite
+├── index.html            # (Option) Interface web FastAPI (Tailwind CSS + Chart.js)
+├── export_demo.py        # (Option) Exporte la base SQLite vers demo_data.json
+└── novapay_demo.db       # (Option) Base SQLite de la version API (créée au 1er lancement)
 ```
 
 ---
@@ -62,7 +64,8 @@ PE&SI/
 
 ### Pré-requis
 - **Python 3.10 ou supérieur** (testé avec Python 3.15 sur Windows)
-- Connexion Internet au premier chargement de la page (Tailwind CSS & Chart.js sont servis par CDN)
+- Aucune connexion Internet requise : l'interface et les graphiques sont **100 % Streamlit natifs**
+  (aucun CDN).
 
 ### Option A — Script automatique
 
@@ -92,36 +95,44 @@ pip install -r requirements.txt
 # 3) (Optionnel) Entraîner le modèle IA + auto-évaluation
 python ml_model.py --train --selftest
 
-# 4) Lancer le serveur
-uvicorn main:app --reload --port 8000
+# 4) Lancer l'application
+streamlit run streamlit_app.py
 ```
 
 ### Accès
 
 | URL | Description |
 |---|---|
-| http://127.0.0.1:8000 | 📊 Interface utilisateur (dashboard + simulateur) |
+| http://localhost:8501 | 📊 Application (tableau de bord, simulateur, alertes, analytique, moteur IA) |
+
+> Au premier lancement, le moteur IA est chargé depuis `artifacts/` (instantané). S'il est absent,
+> il s'entraîne automatiquement en ~10 s. L'interface se recharge en temps réel à chaque paiement.
+
+### Option C — Version API REST (optionnelle)
+
+La version d'origine (FastAPI + interface HTML) reste disponible dans le dépôt :
+
+```bash
+pip install -r requirements.txt -r requirements-api.txt
+python ml_model.py --train --selftest         # si artifacts/ est absent
+uvicorn main:app --reload --port 8000
+```
+
+| URL | Description |
+|---|---|
+| http://127.0.0.1:8000 | 📊 Interface HTML (dashboard + simulateur, Tailwind + Chart.js) |
 | http://127.0.0.1:8000/docs | 📚 Documentation interactive Swagger (tester l'API en direct) |
 | http://127.0.0.1:8000/api/v1/health | ❤️ Sonde de santé du service |
 
-> Le premier démarrage entraîne le modèle (~10 s) et génère ~45 jours d'historique bancaire
-> fictif pour 4 utilisateurs. Les lancements suivants sont instantanés.
+> Cette version stocke les données dans SQLite (`novapay_demo.db`, créée au premier lancement
+> avec ~45 jours d'historique fictif pour 4 utilisateurs). L'interface HTML nécessite Internet
+> (Tailwind CSS et Chart.js sont servis par CDN).
 
-### Option C — Interface Streamlit (alternative, déployable sur le cloud)
+### Données de démonstration (application Streamlit)
 
-```bash
-# (une seule fois) installer les dépendances : pip install -r requirements.txt
-streamlit run streamlit_app.py
-```
-
-→ http://localhost:8501
-
-L'application Streamlit reprend **toutes les fonctionnalités** (tableau de bord, multi-devises,
-simulateur avec **score de risque en temps réel**, authentification dynamique `OTP-XXXX`,
-historique des alertes, moteur IA) et charge les données depuis `demo_data.json`
-(chargement instantané, aucun entraînement au démarrage).
-
-Pour **régénérer la fixture** à partir de la base SQLite :
+L'application charge `demo_data.json` (chargement instantané, aucun entraînement). **Si la fixture
+est absente, un historique de démonstration complet est généré automatiquement par le moteur IA**
+(mode 100 % autonome). Pour régénérer la fixture à partir de la base SQLite de la version API :
 
 ```bash
 python export_demo.py        # novapay_demo.db  ->  demo_data.json
@@ -135,6 +146,10 @@ python export_demo.py        # novapay_demo.db  ->  demo_data.json
 4. Cliquez sur **Deploy** : les dépendances sont installées depuis `requirements.txt`
    et l'application est en ligne en ~1 minute.
 
+> 📦 `requirements.txt` ne contient que les dépendances de l'application Streamlit
+> (`streamlit`, `scikit-learn`, `pandas`, `numpy`, `joblib`) : installation rapide et
+> démarrage à froid en quelques secondes grâce aux modèles versionnés dans `artifacts/`.
+
 > 💡 Chaque visiteur travaille sur **sa propre copie** des données de démonstration :
 > les paiements simulés ne concernent que sa session et tout repart de zéro au rechargement
 > de la page (ou via le bouton « ♻️ Réinitialiser la démonstration »).
@@ -143,50 +158,52 @@ python export_demo.py        # novapay_demo.db  ->  demo_data.json
 
 ## 4. Scénario de démonstration (5 minutes)
 
-1. **Simulation libre** → gros bouton **« Simuler un paiement »** (colonne de droite).
-   La modale permet de saisir **montant, marchand et pays** (+ catégorie, heure, appareil).
-   Pendant la saisie, le **score de risque est calculé en temps réel** (barre animée + facteurs détectés).
+1. **Simulation libre** → ouvrez l'onglet **💳 Simuler un paiement**.
+   Le formulaire permet de saisir **montant, marchand et pays** (+ catégorie, heure, canal, appareil).
+   Pendant la saisie, le **score de risque est calculé en temps réel** (jauge + décision + facteurs détectés).
 
-2. **Paiement normal** → saisissez un petit montant, un marchand local, votre pays
-   (ou bouton « Scénario normal »)
-   → score ~5 %, *validé automatiquement*, et un **reçu s'affiche avec le code de sécurité
+2. **Paiement normal** → bouton **🟢 Scénario normal** (ou un petit montant chez un marchand local)
+   → score ~5-25 %, *validé automatiquement*, et un **reçu s'affiche avec le code de sécurité
    à usage unique généré par l'IA** (ex. `OTP-8492`), le solde est débité dans la seconde.
 
-3. **Paiement suspect** → montant ×10, crypto/cartes cadeaux, 3 h du matin, pays à risque,
-   appareil inconnu (ou bouton « Scénario suspect »)
-   → score > 70 %, **la modale MFA s'ouvre** avec le « SMS simulé » contenant le code `OTP-XXXX`.
+3. **Paiement suspect** → bouton **🔴 Scénario suspect** (montant ×10, crypto/cartes cadeaux,
+   3 h du matin, pays à risque, appareil inconnu)
+   → score > 70 %, **le panneau MFA s'ouvre** avec le « SMS simulé » contenant le code `OTP-XXXX`
+   et un compte à rebours de 3 minutes.
 
 4. **Sécurité** :
-   - cliquez « Remplir » puis « Valider » → paiement autorisé, **reçu avec le code** ;
+   - cliquez « Remplir » (ou saisissez le code) puis « ✅ Valider » → paiement autorisé, **reçu avec le code** ;
    - avec un mauvais code → refus, compteur de tentatives ;
    - au bout de 3 échecs → transaction **bloquée** ;
-   - « Renvoyer » génère un nouveau code ; « Refuser » annule sans débit.
+   - « 📨 Renvoyer » génère un nouveau code ; « 🚫 Refuser » annule sans débit.
 
-5. **Historique des alertes** → cliquez sur la carte **« Alertes »** (KPI en haut à droite) :
+5. **Historique des alertes** → cliquez sur le KPI **« Alertes » → 🔍 Détail** (ou onglet **🚨 Alertes**) :
    la fenêtre affiche les **3 dernières tentatives de fraude** avec **heure, montant et motif du blocage**.
 
-6. **Multi-devises** → changez la devise dans l'en-tête (`€ EUR`, `$ USD`, `MAD`, `£ GBP`) :
+6. **Multi-devises** → changez la devise dans la **barre latérale** (`€ EUR`, `$ USD`, `MAD`, `£ GBP`) :
    solde, KPI, graphiques, transactions et alertes sont **reconvertis instantanément**
-   (montants stockés en EUR, puis convertis selon le taux affiché).
+   (montants stockés en EUR, puis convertis selon le taux affiché, avec le taux rappelé à l'écran).
 
 7. **Impact sur le compte** : après validation, le solde, l'historique, le graphique
-   « Analyse comportementale — 14 jours » et le **score de sécurité** se recalculent en direct
-   (le score baisse après une transaction à risque).
+   « Analyse comportementale — 14 jours » et le **score de sécurité** (barre latérale) se recalculent
+   en direct (le score baisse après une transaction à risque).
 
-8. **Mode démo automatique** (interrupteur en bas à droite) : un flux de paiements
-   (70 % normaux / 30 % suspects) est envoyé toutes les 7 s ; les codes MFA sont validés
-   automatiquement pour illustrer la chaîne complète.
+8. **Réinitialiser la démonstration** : bouton « ♻️ Réinitialiser la démonstration » dans la barre latérale.
 
-9. **Réinitialiser l'historique** : bouton en bas de la colonne de droite.
+9. **Explorer le moteur** : onglets **📈 Analytique** (distribution du risque, dépenses par catégorie,
+   rythme de dépense) et **🤖 Moteur IA** (métriques AUC/précision/rappel, importances des variables,
+   seuils de décision).
 
-> 🔁 **Version Streamlit** : le même scénario s'applique — onglet **💳 Simuler un paiement**
-> (score en temps réel + boutons « Scénario normal / suspect »), panneau **MFA** avec le SMS
-> simulé, reçu avec le code `OTP-XXXX`, puis carte **Alertes** cliquable en haut du tableau
-> de bord (fenêtre modale listant les 3 dernières tentatives).
+> 🔁 **Version API/HTML (optionnelle)** : le même parcours s'applique via
+> `index.html` (modale « Simuler un paiement », fenêtre MFA, carte « Alertes » cliquable,
+> sélecteur de devise dans l'en-tête, mode démo automatique).
 
 ---
 
-## 5. API REST
+## 5. Version API REST (optionnelle)
+
+La version d'origine (FastAPI + SQLite + interface HTML) reste disponible pour tester le moteur
+comme **service REST** : elle expose le pipeline de décision complet en HTTP.
 
 | Méthode | Route | Description |
 |---|---|---|
@@ -307,27 +324,27 @@ score = 100 × ( 0,46 × P(RandomForest)        # classification supervisée
 
 ## 7. Personnalisation
 
-Variables d'environnement (avant de lancer le serveur) :
+Variables d'environnement (avant de lancer l'application) :
 
 | Variable | Défaut | Effet |
 |---|---|---|
 | `OTP_THRESHOLD` | `30` | Seuil de bascule vers l'authentification dynamique |
 | `OTP_TTL_SECONDS` | `180` | Durée de vie d'un code OTP |
 | `AUTO_BLOCK_RISK_THRESHOLD` | `101` (jamais) | Score au-delà duquel la transaction est refusée sans OTP |
-| `NOVAPAY_DB` | `novapay_demo.db` | Chemin du fichier SQLite |
+| `NOVAPAY_DB` | `novapay_demo.db` | Chemin du fichier SQLite (version API uniquement) |
+
+Ces variables sont lues par `ml_model.py`, donc appliquées **aux deux interfaces** (Streamlit et API).
+Sur Streamlit Community Cloud, définissez-les dans *Settings → Secrets* ou dans l'environnement
+du conteneur.
 
 Pour réentraîner le modèle : `python ml_model.py --train --samples 20000` puis supprimer
 le dossier `artifacts/` pour forcer la régénération.
 
 **Devises** : les taux de change de démonstration sont définis dans le dictionnaire `CURRENCIES`
-de `main.py` (base EUR). Pour brancher des taux réels : appelez une API de change au démarrage
-(ou mettez en cache un taux journalier) et alimentez `CURRENCIES[code]["rate"]` — le reste de
-l'application (dashboard, alertes, simulateur, scoring) s'adapte automatiquement.
-
-**Version Streamlit** : mêmes variables d'environnement (`OTP_THRESHOLD`, `OTP_TTL_SECONDS`,
-`AUTO_BLOCK_RISK_THRESHOLD`) et mêmes taux (`CURRENCIES` de `streamlit_app.py`).
-Sur Streamlit Community Cloud, définissez-les dans *Settings → Secrets* ou dans l'environnement
-du conteneur.
+de `streamlit_app.py` (base EUR ; `main.py` pour la version API). Pour brancher des taux réels :
+appelez une API de change au démarrage (ou mettez en cache un taux journalier) et alimentez
+`CURRENCIES[code]["rate"]` — le reste de l'application (tableau de bord, alertes, simulateur,
+scoring) s'adapte automatiquement.
 
 ---
 
@@ -348,15 +365,17 @@ du conteneur.
 | Problème | Solution |
 |---|---|
 | `ModuleNotFoundError` | Activez le venv puis `pip install -r requirements.txt` |
-| Erreur d'installation de `pyyaml` / compilation C++ | Installez `uvicorn` **sans** l'extra `[standard]` (déjà le cas dans `requirements.txt`) |
-| Page sans style (Tailwind) | Vérifiez l'accès Internet (les CDN servent Tailwind et Chart.js) |
+| Erreur d'installation de `pyyaml` / compilation C++ (version API) | Installez `uvicorn` **sans** l'extra `[standard]` (déjà le cas dans `requirements-api.txt`) |
+| Page sans style (version API/HTML) | Vérifiez l'accès Internet (les CDN servent Tailwind et Chart.js) |
 | `Artifact déjà existant mais incompatible` | Supprimez le dossier `artifacts/` puis relancez |
-| Historique incohérent pendant la démo | `POST /api/v1/users/user_001/reset` ou le bouton « Réinitialiser » |
-| Port 8501 déjà utilisé (Streamlit) | `streamlit run streamlit_app.py --server.port 8502` |
-| `demo_data.json introuvable` (Streamlit) | Lancez `python export_demo.py` pour régénérer la fixture |
+| Historique incohérent pendant la démo | Bouton « ♻️ Réinitialiser la démonstration » (Streamlit) ou `POST /api/v1/users/user_001/reset` (API) |
+| Port 8501 déjà utilisé | `streamlit run streamlit_app.py --server.port 8502` |
+| `demo_data.json` manquant | **Aucun problème** : l'application génère automatiquement un historique avec le moteur IA. Pour la fixture complète (300 transactions) : `python export_demo.py` |
+| Rendu « Source file changed » dans Streamlit | Rechargez la page (F5) pour exécuter la dernière version du code |
 
 ---
 
 *Prototype à but de démonstration — toutes les données sont fictives.
-Deux interfaces disponibles : **FastAPI + HTML** (`main.py` → http://127.0.0.1:8000) et
-**Streamlit** (`streamlit_app.py` → http://localhost:8501).*
+Application principale : **Streamlit** (`streamlit_app.py` → http://localhost:8501),
+100 % composants natifs et déployable sur Streamlit Community Cloud.
+Version API optionnelle : **FastAPI + HTML** (`main.py` → http://127.0.0.1:8000).*

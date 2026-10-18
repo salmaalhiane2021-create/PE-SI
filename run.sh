@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
-#  NovaPay AI - Lancement du prototype (macOS / Linux / Git Bash)
+#  NovaPay AI - Lancement de l'application Streamlit (macOS / Linux / Git Bash)
+#  (interface 100 % Streamlit : streamlit_app.py)
 # ============================================================
 set -e
 cd "$(dirname "$0")"
@@ -10,15 +11,15 @@ if [ ! -f ".venv/bin/python" ]; then
   python3 -m venv .venv
 fi
 
-echo "[2/3] Installation des dépendances..."
+echo "[2/3] Installation des dépendances (application Streamlit)..."
 .venv/bin/python -m pip install --quiet --upgrade pip
 .venv/bin/python -m pip install --quiet -r requirements.txt
 
-echo "[3/3] Entraînement du modèle IA (si nécessaire) puis démarrage du serveur..."
+echo "[3/3] Vérification du moteur IA (entraînement si nécessaire)..."
 .venv/bin/python ml_model.py --selftest
 
 echo ""
-echo "  Interface : http://127.0.0.1:8000"
-echo "  Swagger   : http://127.0.0.1:8000/docs"
+echo "  Application : http://localhost:8501"
+echo "  (version API REST optionnelle : voir requirements-api.txt)"
 echo ""
-exec .venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+exec .venv/bin/python -m streamlit run streamlit_app.py

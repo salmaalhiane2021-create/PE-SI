@@ -1,0 +1,17 @@
+# ============================================================
+#  NovaPay AI - Version API REST (optionnelle)
+#  Fichiers : main.py + index.html (interface HTML/Tailwind)
+#  Installation :  pip install -r requirements.txt -r requirements-api.txt
+#  Lancement   :  uvicorn main:app --host 127.0.0.1 --port 8000
+#
+#  L'application Streamlit (streamlit_app.py) n'a PAS besoin de ce fichier :
+#  elle embarque le moteur IA (ml_model.py) directement dans le processus.
+# ============================================================
+
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.6
+
+# Note : uvicorn est volontairement installe SANS les extras "standard"
+# (qui tirent PyYAML, non indispensable ici et sans wheel sur les nouvelles
+# versions de Python sous Windows).
