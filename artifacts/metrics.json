@@ -1,0 +1,44 @@
+{
+  "auc_roc": 1.0,
+  "auc_roc_random_forest": 1.0,
+  "precision": 0.9689,
+  "recall": 0.9989,
+  "f1_score": 0.9836,
+  "confusion_matrix": [
+    [
+      2068,
+      29
+    ],
+    [
+      1,
+      902
+    ]
+  ],
+  "threshold": 30.0,
+  "n_train_samples": 9000,
+  "n_test_samples": 3000,
+  "n_samples_total": 12000,
+  "mean_score_legit": 7.3,
+  "mean_score_fraud": 92.0,
+  "p95_score_legit": 18.7,
+  "p05_score_fraud": 81.8,
+  "feature_importances": {
+    "merchant_risk": 0.2682,
+    "distance_km": 0.2574,
+    "tx_velocity_1h": 0.1617,
+    "amount_ratio": 0.1167,
+    "is_night": 0.0591,
+    "is_new_location": 0.049,
+    "is_foreign": 0.0334,
+    "hour": 0.024,
+    "user_risk_history": 0.0209,
+    "is_new_device": 0.0068,
+    "amount": 0.0027,
+    "is_weekend": 0.0001
+  },
+  "weights": {
+    "random_forest": 0.46,
+    "isolation_forest": 0.34,
+    "rules": 0.2
+  }
+}

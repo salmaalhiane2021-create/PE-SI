@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NovaPay AI — Paiement sécurisé & détection de fraude</title>
+<meta name="description" content="Prototype FinTech : scoring de risque IA, MFA dynamique et multi-devises." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+        keyframes: {
+          pop: { '0%': { transform: 'scale(.96)', opacity: 0 }, '100%': { transform: 'scale(1)', opacity: 1 } },
+          slidein: { '0%': { transform: 'translateX(24px)', opacity: 0 }, '100%': { transform: 'translateX(0)', opacity: 1 } },
+          pulseline: { '0%,100%': { opacity: .45 }, '50%': { opacity: 1 } },
+        },
+        animation: { pop: 'pop .25s ease-out', slidein: 'slidein .3s ease-out', pulseline: 'pulseline 1.4s ease-in-out infinite' },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { background: #05070f; font-feature-settings: "cv02","cv03","cv04","cv11"; }
+  .glow-bg {
+    background:
+      radial-gradient(900px 500px at 12% -10%, rgba(124,58,237,.28), transparent 60%),
+      radial-gradient(800px 420px at 95% 8%, rgba(34,211,238,.18), transparent 55%),
+      radial-gradient(700px 500px at 60% 120%, rgba(236,72,153,.12), transparent 60%),
+      #05070f;
+  }
+  .glass { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.08); backdrop-filter: blur(14px); }
+  .glass-strong { background: rgba(13,18,36,.88); border: 1px solid rgba(255,255,255,.10); backdrop-filter: blur(18px); }
+  .card-sheen { position: relative; overflow: hidden; }
+  .card-sheen::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.09) 45%, transparent 60%);
+    transform: translateX(-120%); transition: transform .9s ease;
+  }
+  .card-sheen:hover::after { transform: translateX(120%); }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.28); border-radius: 99px; }
+  input[type=range] { accent-color: #8b5cf6; }
+  select option { background: #0d1224; color: #e2e8f0; }
+  .fade-up { animation: pop .3s ease-out both; }
+  .score-track { transition: width .7s cubic-bezier(.22,1,.36,1), background .5s; }
+  .pulse-dot { box-shadow: 0 0 0 0 rgba(52,211,153,.7); animation: pd 2s infinite; }
+  @keyframes pd { 0% { box-shadow: 0 0 0 0 rgba(52,211,153,.55); } 70% { box-shadow: 0 0 0 12px rgba(52,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } }
+  .otp-box { width: 3.1rem; height: 3.6rem; }
+  .code-chip {
+    font-family: 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .18em;
+    background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(34,211,238,.18));
+    border: 1px dashed rgba(167,139,250,.55);
+  }
+  .kpi-clickable { transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease; }
+  .kpi-clickable:hover { transform: translateY(-2px); border-color: rgba(251,191,36,.5); box-shadow: 0 10px 30px -12px rgba(251,191,36,.35); }
+  .step-dot { width: .45rem; height: .45rem; border-radius: 9999px; }
+</style>
+</head>
+
+<body class="glow-bg text-slate-100 font-sans min-h-screen antialiased">
+
+<!-- ============================= HEADER ============================= -->
+<header class="sticky top-0 z-40 border-b border-white/10 bg-[#05070f]/80 backdrop-blur-xl">
+  <div class="max-w-7xl mx-auto px-4 h-16 flex items-center gap-3 flex-wrap md:flex-nowrap py-2 md:py-0">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-cyan-400 grid place-items-center shadow-lg shadow-violet-900/40">
+        <svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      </div>
+      <div class="leading-tight">
+        <div class="font-extrabold tracking-tight text-lg">NovaPay <span class="bg-gradient-to-r from-violet-400 to-cyan-300 bg-clip-text text-transparent">AI</span></div>
+        <div class="text-[10px] uppercase tracking-[0.22em] text-slate-400">Fraud Shield · PoC</div>
+      </div>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2 md:gap-3 flex-wrap">
+      <div class="hidden sm:flex items-center gap-2 text-xs text-emerald-300 glass rounded-full px-3 py-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span> IA en ligne
+      </div>
+
+      <!-- Sélecteur de devise -->
+      <div class="flex items-center gap-1.5 glass rounded-xl px-2 py-1.5" title="Devise d'affichage">
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/></svg>
+        <select id="currencySelect" class="bg-transparent text-sm font-semibold focus:outline-none cursor-pointer"></select>
+      </div>
+
+      <div id="headerScore" class="hidden md:flex items-center gap-2 text-xs glass rounded-full px-3 py-1.5">
+        <span class="text-slate-400">Score sécurité</span>
+        <span id="headerScoreValue" class="font-bold">—</span>
+      </div>
+      <select id="userSelect" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 cursor-pointer"></select>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 py-6 grid gap-6 lg:grid-cols-[1fr_380px]">
+
+  <!-- ======================= COLONNE PRINCIPALE ======================= -->
+  <section class="space-y-6 min-w-0">
+
+    <!-- Carte compte + KPI -->
+    <div class="grid gap-4 md:grid-cols-[1.15fr_1fr]">
+      <div class="card-sheen glass rounded-2xl p-5 relative overflow-hidden">
+        <div class="absolute -right-16 -top-20 w-64 h-64 rounded-full bg-violet-600/20 blur-3xl"></div>
+        <div class="flex items-start justify-between relative">
+          <div>
+            <div class="text-xs uppercase tracking-widest text-slate-400">Solde disponible</div>
+            <div id="balanceValue" class="mt-2 text-4xl font-extrabold tracking-tight">—</div>
+            <div id="balanceSecondary" class="mt-1 text-[11px] text-slate-400"></div>
+            <div id="ibanLine" class="mt-1 text-xs text-slate-400">•••• •••• •••• ••••</div>
+          </div>
+          <div class="text-right">
+            <div id="userName" class="font-semibold">—</div>
+            <div id="userCity" class="text-xs text-slate-400">—</div>
+          </div>
+        </div>
+        <div class="mt-5 flex items-center gap-3 text-xs flex-wrap">
+          <span id="cardLast4" class="glass rounded-lg px-2.5 py-1.5 text-slate-300">••••</span>
+          <span class="glass rounded-lg px-2.5 py-1.5 text-slate-300">Visa Infinite</span>
+          <span class="glass rounded-lg px-2.5 py-1.5 text-slate-300">3-D Secure · IA</span>
+          <span id="fxRate" class="glass rounded-lg px-2.5 py-1.5 text-slate-400">—</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="glass rounded-2xl p-4">
+          <div class="text-[11px] uppercase tracking-widest text-slate-400">Dépenses 30j</div>
+          <div id="kpiSpend" class="mt-1.5 text-xl font-bold">—</div>
+          <div id="kpiTicket" class="text-[11px] text-slate-400">—</div>
+        </div>
+        <div class="glass rounded-2xl p-4">
+          <div class="text-[11px] uppercase tracking-widest text-slate-400">Revenus 30j</div>
+          <div id="kpiIncome" class="mt-1.5 text-xl font-bold text-emerald-300">—</div>
+          <div id="kpiTxCount" class="text-[11px] text-slate-400">—</div>
+        </div>
+        <div class="glass rounded-2xl p-4">
+          <div class="text-[11px] uppercase tracking-widest text-slate-400">Risque moyen</div>
+          <div id="kpiRisk" class="mt-1.5 text-xl font-bold">—</div>
+          <div class="text-[11px] text-slate-400">30 derniers jours</div>
+        </div>
+
+        <!-- Carte Alertes cliquable -->
+        <button id="kpiAlertsCard" class="kpi-clickable text-left glass rounded-2xl p-4 relative group">
+          <div class="flex items-start justify-between">
+            <div class="text-[11px] uppercase tracking-widest text-slate-400">Alertes</div>
+            <svg viewBox="0 0 24 24" class="w-4 h-4 text-amber-300/80" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          </div>
+          <div id="kpiAlerts" class="mt-1.5 text-xl font-bold text-amber-300">—</div>
+          <div id="kpiPending" class="text-[11px] text-amber-300/80">—</div>
+          <div class="mt-1 text-[10px] text-amber-200/90 flex items-center gap-1 opacity-80 group-hover:opacity-100">
+            Voir les 3 dernières tentatives
+            <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M9 7h8v8"/></svg>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Graphiques -->
+    <div class="grid gap-4 md:grid-cols-2">
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">Dépenses par catégorie</h2>
+          <span class="text-[11px] text-slate-400">30 jours · <span class="currency-label">EUR</span></span>
+        </div>
+        <div class="mt-4 h-64 grid place-items-center">
+          <canvas id="categoryChart"></canvas>
+          <div id="categoryEmpty" class="hidden text-sm text-slate-400">Aucune donnée</div>
+        </div>
+      </div>
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">Activité par heure</h2>
+          <span class="text-[11px] text-slate-400">plages sensibles 23h–5h</span>
+        </div>
+        <div class="mt-4 h-64"><canvas id="hourChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Tendance -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <h2 class="font-semibold">Analyse comportementale — 14 jours</h2>
+        <div class="flex items-center gap-3 text-[11px] text-slate-400">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-violet-400"></span>Dépenses</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>Anomalies IA</span>
+        </div>
+      </div>
+      <div class="mt-4 h-64"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <!-- Transactions -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">Dernières transactions</h2>
+        <button id="btnRefresh" class="text-xs glass rounded-lg px-3 py-1.5 hover:bg-white/10 transition">Rafraîchir</button>
+      </div>
+      <div id="txList" class="mt-3 divide-y divide-white/5"></div>
+    </div>
+  </section>
+
+  <!-- ======================= COLONNE LATÉRALE ======================= -->
+  <aside class="space-y-6 min-w-0">
+
+    <!-- Score de sécurité -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">Score de sécurité</h2>
+        <span id="securityLevel" class="text-[11px] glass rounded-full px-2.5 py-1">—</span>
+      </div>
+      <div class="mt-4 flex items-center gap-5">
+        <div class="relative w-[132px] h-[132px] shrink-0">
+          <svg viewBox="0 0 120 120" class="w-full h-full -rotate-90">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="11" />
+            <circle id="gaugeArc" cx="60" cy="60" r="52" fill="none" stroke="url(#gaugeGrad)" stroke-width="11"
+                    stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+                    style="transition: stroke-dashoffset 1s cubic-bezier(.22,1,.36,1)" />
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#f43f5e" /><stop offset="50%" stop-color="#f59e0b" /><stop offset="100%" stop-color="#34d399" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="absolute inset-0 grid place-items-center">
+            <div class="text-center">
+              <div id="securityScore" class="text-3xl font-extrabold">—</div>
+              <div class="text-[10px] uppercase tracking-widest text-slate-400">/ 100</div>
+            </div>
+          </div>
+        </div>
+        <div class="text-sm space-y-2 min-w-0">
+          <p id="securityVerdict" class="text-slate-300 leading-snug">Analyse en cours…</p>
+          <div class="text-xs text-slate-400">
+            <div class="flex justify-between gap-3"><span>Incidents récents</span><span id="securityIncidents" class="font-semibold text-slate-200">—</span></div>
+            <div class="flex justify-between gap-3 mt-1"><span>Risque moyen</span><span id="securityAvg" class="font-semibold text-slate-200">—</span></div>
+            <div class="flex justify-between gap-3 mt-1"><span>Seuil MFA</span><span class="font-semibold text-slate-200">30 %</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Authentifications en attente -->
+    <div id="pendingCard" class="hidden glass rounded-2xl p-5 border-amber-400/30">
+      <div class="flex items-center gap-2">
+        <svg viewBox="0 0 24 24" class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        <h2 class="font-semibold text-amber-200">Authentification en attente</h2>
+      </div>
+      <div id="pendingList" class="mt-3 space-y-2"></div>
+    </div>
+
+    <!-- Module de simulation -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">Module de paiement</h2>
+        <span class="text-[10px] uppercase tracking-widest text-violet-300">moteur IA</span>
+      </div>
+
+      <button id="btnOpenSimulation"
+        class="mt-4 w-full rounded-2xl px-4 py-4 text-base font-bold bg-gradient-to-r from-violet-600 via-fuchsia-600 to-cyan-500 hover:from-violet-500 hover:via-fuchsia-500 hover:to-cyan-400 transition shadow-xl shadow-violet-900/40 flex items-center justify-center gap-2">
+        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Simuler un paiement
+      </button>
+      <p class="mt-2 text-[11px] text-slate-400 text-center">Montant, marchand, pays — score de risque calculé en temps réel.</p>
+
+      <div class="mt-4 grid grid-cols-2 gap-3">
+        <button id="btnNormal" class="rounded-xl px-3 py-2.5 text-xs font-semibold bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 hover:bg-emerald-500/25 transition">Scénario normal</button>
+        <button id="btnSuspicious" class="rounded-xl px-3 py-2.5 text-xs font-semibold bg-rose-500/15 text-rose-200 border border-rose-400/30 hover:bg-rose-500/25 transition">Scénario suspect</button>
+      </div>
+    </div>
+
+    <!-- Insights IA -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">Moteur IA</h2>
+        <span id="modelAuc" class="text-[11px] glass rounded-full px-2.5 py-1">—</span>
+      </div>
+      <p class="mt-2 text-xs text-slate-400 leading-relaxed">
+        Ensemble <span class="text-slate-200">RandomForest</span> (supervisé) +
+        <span class="text-slate-200">IsolationForest</span> (anomalies) +
+        <span class="text-slate-200">règles métier</span>. Variables les plus déterminantes :
+      </p>
+      <div id="featureImportances" class="mt-3 space-y-2"></div>
+    </div>
+
+    <!-- Mode démo -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="font-semibold text-sm">Mode démo automatique</h2>
+          <p class="text-[11px] text-slate-400 mt-0.5">Génère un flux de paiements en continu (70 % normaux, 30 % suspects).</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer shrink-0">
+          <input id="autoDemo" type="checkbox" class="sr-only peer" />
+          <div class="w-11 h-6 bg-white/10 peer-checked:bg-violet-600 rounded-full transition after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+        </label>
+      </div>
+      <button id="btnReset" class="mt-4 w-full text-xs glass rounded-xl px-3 py-2.5 hover:bg-white/10 transition text-slate-300">
+        Réinitialiser l'historique de cet utilisateur
+      </button>
+    </div>
+  </aside>
+</main>
+
+<footer class="max-w-7xl mx-auto px-4 pb-10 pt-2 text-[11px] text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
+  <span>NovaPay AI · Proof of Concept</span>
+  <span>FastAPI + scikit-learn + Tailwind</span>
+  <a href="/docs" target="_blank" class="hover:text-slate-300 underline underline-offset-2">API Swagger /docs</a>
+  <span class="ml-auto">Données fictives — usage démonstration uniquement.</span>
+</footer>
+
+<!-- ===================== MODALE : SIMULATION DE PAIEMENT ===================== -->
+<div id="paymentModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm p-4 grid place-items-center overflow-y-auto">
+  <div class="glass-strong rounded-3xl w-full max-w-lg my-8 animate-pop">
+    <!-- Étape 1 : saisie + score temps réel -->
+    <div id="paymentStepForm">
+      <div class="p-6 pb-4 border-b border-white/10 flex items-start gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-400 grid place-items-center shrink-0">
+          <svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        </div>
+        <div class="min-w-0">
+          <h3 class="font-bold text-lg">Simuler un paiement</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Le moteur IA évalue le risque <span class="text-slate-200">en temps réel</span> pendant la saisie.</p>
+        </div>
+        <button data-close-payment class="ml-auto text-slate-400 hover:text-white transition text-xl leading-none">&times;</button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="col-span-2 sm:col-span-1">
+            <label class="text-xs text-slate-400">Montant</label>
+            <div class="mt-1 flex items-center bg-white/5 border border-white/10 rounded-xl focus-within:ring-2 focus-within:ring-violet-500/60">
+              <input id="payAmount" type="number" min="0.5" step="0.5" placeholder="0.00"
+                     class="w-full bg-transparent px-3 py-2.5 text-sm focus:outline-none" />
+              <span id="payCurrencyBadge" class="px-3 text-sm font-bold text-violet-300 border-l border-white/10">EUR</span>
+            </div>
+          </div>
+          <div class="col-span-2 sm:col-span-1">
+            <label class="text-xs text-slate-400">Pays</label>
+            <select id="payCountry" class="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60"></select>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-slate-400">Marchand</label>
+          <input id="payMerchant" list="merchantSuggestions" placeholder="ex: Starbucks, Binance…"
+                 class="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60" />
+          <datalist id="merchantSuggestions"></datalist>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs text-slate-400">Catégorie</label>
+            <select id="payCategory" class="mt-1 w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60"></select>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Heure : <span id="payHourLabel" class="text-slate-200 font-semibold">13h</span></label>
+            <input id="payHour" type="range" min="0" max="23" value="13" class="mt-3 w-full" />
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 text-xs text-slate-300 glass rounded-xl px-3 py-2.5 cursor-pointer w-fit">
+          <input id="payNewDevice" type="checkbox" class="accent-violet-500 w-4 h-4" />
+          Appareil non reconnu
+        </label>
+
+        <!-- Score temps réel -->
+        <div class="rounded-2xl border border-white/10 bg-black/30 p-4">
+          <div class="flex items-center justify-between">
+            <div class="text-[11px] uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              Score de risque IA
+              <span class="flex items-center gap-1 text-[10px] text-violet-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulseline"></span>temps réel
+              </span>
+            </div>
+            <span id="liveLevel" class="text-[11px] border rounded-lg px-2 py-0.5 border-white/10 text-slate-400">—</span>
+          </div>
+          <div class="mt-2 flex items-end gap-3">
+            <div id="liveScore" class="text-3xl font-extrabold tabular-nums text-slate-300">—<span class="text-base text-slate-500">%</span></div>
+            <div id="liveDecision" class="pb-1 text-[11px] text-slate-400">en attente de données…</div>
+          </div>
+          <div class="mt-3 h-2.5 rounded-full bg-white/10 overflow-hidden">
+            <div id="liveBar" class="h-full rounded-full score-track" style="width:0%;background:linear-gradient(90deg,#34d399,#fbbf24,#f43f5e)"></div>
+          </div>
+          <div id="liveFactors" class="mt-3 space-y-1 text-[11px] text-slate-300"></div>
+        </div>
+      </div>
+
+      <div class="px-6 pb-6 flex gap-3">
+        <button data-close-payment class="flex-1 rounded-xl px-4 py-3 text-sm font-semibold glass hover:bg-white/10 transition">Annuler</button>
+        <button id="btnSubmitPayment" class="flex-[1.6] rounded-xl px-4 py-3 text-sm font-bold bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 transition shadow-lg shadow-violet-900/30">
+          Analyser &amp; payer
+        </button>
+      </div>
+    </div>
+
+    <!-- Étape 2 : reçu + code d'autorisation -->
+    <div id="paymentStepReceipt" class="hidden p-6">
+      <div class="text-center">
+        <div id="receiptIcon" class="mx-auto w-16 h-16 rounded-3xl grid place-items-center bg-gradient-to-br from-emerald-400 to-cyan-500">
+          <svg viewBox="0 0 24 24" class="w-8 h-8 text-slate-900" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <h3 id="receiptTitle" class="mt-3 font-bold text-xl">Paiement autorisé</h3>
+        <p id="receiptSubtitle" class="text-xs text-slate-400 mt-1">Transaction validée et débitée.</p>
+      </div>
+
+      <div class="mt-5 rounded-2xl glass p-4 space-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-slate-400">Montant</span><span id="receiptAmount" class="font-bold">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Marchand</span><span id="receiptMerchant" class="font-semibold text-right">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Pays / ville</span><span id="receiptLocation" class="font-semibold text-right">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Score de risque IA</span><span id="receiptRisk" class="font-bold">—</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Nouveau solde</span><span id="receiptBalance" class="font-semibold">—</span></div>
+      </div>
+
+      <div id="receiptCodeBlock" class="mt-4 rounded-2xl p-4 code-chip text-center">
+        <div class="text-[11px] uppercase tracking-widest text-violet-200/80">Code de sécurité à usage unique (généré par l'IA)</div>
+        <div id="receiptCode" class="mt-2 text-3xl font-extrabold text-white">OTP-••••</div>
+        <div id="receiptCodeNote" class="mt-1 text-[11px] text-slate-300">Utilisé une seule fois pour autoriser ce paiement.</div>
+      </div>
+
+      <div class="mt-5 flex gap-3">
+        <button id="btnNewSimulation" class="flex-1 rounded-xl px-4 py-3 text-sm font-semibold glass hover:bg-white/10 transition">Nouvelle simulation</button>
+        <button data-close-payment class="flex-1 rounded-xl px-4 py-3 text-sm font-bold bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 transition">Terminer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODALE : MFA / OTP ===================== -->
+<div id="otpModal" class="hidden fixed inset-0 z-[55] bg-black/70 backdrop-blur-sm p-4 grid place-items-center">
+  <div class="glass-strong rounded-3xl w-full max-w-md p-6 animate-pop">
+    <div class="flex items-start gap-4">
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-500 grid place-items-center shrink-0">
+        <svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div class="min-w-0">
+        <h3 class="font-bold text-lg">Authentification dynamique (MFA)</h3>
+        <p class="text-xs text-slate-400 mt-1">L'IA a détecté un risque élevé. Saisissez le code à usage unique envoyé par SMS.</p>
+      </div>
+      <button data-close-otp class="ml-auto text-slate-400 hover:text-white transition text-xl leading-none">&times;</button>
+    </div>
+
+    <div class="mt-5 rounded-2xl bg-gradient-to-r from-violet-600/20 to-cyan-500/10 border border-white/10 p-4">
+      <div class="flex items-center justify-between text-xs text-slate-300">
+        <span>Destinataire</span><span id="otpPhone" class="font-semibold">—</span>
+      </div>
+      <div class="flex items-center justify-between text-xs text-slate-300 mt-1.5">
+        <span>Canal</span><span class="font-semibold">SMS · Push</span>
+      </div>
+      <div class="flex items-center justify-between text-xs text-slate-300 mt-1.5">
+        <span>Expire dans</span><span id="otpTimer" class="font-semibold text-amber-300">—</span>
+      </div>
+      <div class="mt-3 pt-3 border-t border-white/10">
+        <div class="text-[11px] text-slate-400">Simulation SMS — code reçu :</div>
+        <div class="mt-1 flex items-center gap-3">
+          <span id="otpDemoCode" class="text-2xl font-extrabold tracking-[0.2em] text-white font-mono">OTP-••••</span>
+          <button id="btnFillOtp" class="text-[11px] glass rounded-lg px-2.5 py-1.5 hover:bg-white/10 transition">Remplir</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <div id="txRiskSummary" class="text-xs text-slate-400 mb-4"></div>
+      <div class="flex items-center gap-3">
+        <span class="font-mono font-bold text-slate-300">OTP-</span>
+        <div id="otpInputs" class="flex flex-1 justify-between gap-2"></div>
+      </div>
+      <div id="otpError" class="hidden mt-3 text-xs text-rose-300 bg-rose-500/10 border border-rose-400/20 rounded-xl px-3 py-2"></div>
+    </div>
+
+    <div class="mt-6 flex gap-3">
+      <button id="btnCancelTx" class="flex-1 rounded-xl px-4 py-3 text-sm font-semibold glass hover:bg-white/10 transition">Refuser</button>
+      <button id="btnResendOtp" class="flex-1 rounded-xl px-4 py-3 text-sm font-semibold glass hover:bg-white/10 transition">Renvoyer</button>
+      <button id="btnVerifyOtp" class="flex-[1.4] rounded-xl px-4 py-3 text-sm font-bold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-900 hover:from-emerald-400 hover:to-cyan-400 transition">Valider</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODALE : HISTORIQUE DES ALERTES ===================== -->
+<div id="alertsModal" class="hidden fixed inset-0 z-[54] bg-black/70 backdrop-blur-sm p-4 grid place-items-center overflow-y-auto">
+  <div class="glass-strong rounded-3xl w-full max-w-2xl my-8 animate-pop">
+    <div class="p-6 pb-4 border-b border-white/10 flex items-start gap-4">
+      <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-rose-500 grid place-items-center shrink-0">
+        <svg viewBox="0 0 24 24" class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      </div>
+      <div class="min-w-0">
+        <h3 class="font-bold text-lg">Historique des alertes</h3>
+        <p class="text-xs text-slate-400 mt-0.5">3 dernières tentatives de fraude détectées par l'IA — heure, montant et motif du blocage.</p>
+      </div>
+      <button data-close-alerts class="ml-auto text-slate-400 hover:text-white transition text-xl leading-none">&times;</button>
+    </div>
+    <div id="alertsBody" class="p-6 pt-4 space-y-3"></div>
+  </div>
+</div>
+
+<!-- ===================== MODALE : DÉTAIL TRANSACTION ===================== -->
+<div id="detailModal" class="hidden fixed inset-0 z-[54] bg-black/70 backdrop-blur-sm p-4 grid place-items-center">
+  <div class="glass-strong rounded-3xl w-full max-w-lg p-6 animate-pop">
+    <div class="flex items-start justify-between">
+      <h3 class="font-bold text-lg">Détail de la transaction</h3>
+      <button data-close-detail class="text-slate-400 hover:text-white transition text-xl leading-none">&times;</button>
+    </div>
+    <div id="detailBody" class="mt-4 space-y-3 text-sm"></div>
+  </div>
+</div>
+
+<div id="toasts" class="fixed bottom-4 right-4 z-[70] space-y-2 w-[330px] max-w-[calc(100vw-2rem)]"></div>
+
+<script>
+/* =====================================================================
+   NovaPay AI — Frontend (vanilla JS, sans build)
+   Nouveautés : multi-devises, modale de simulation, code MFA OTP-XXXX,
+   historique des alertes interactif.
+   ===================================================================== */
+
+const ICONS = { cart:'🛒', utensils:'🍽️', car:'🚇', heart:'💊', wifi:'📱', shirt:'👕', box:'📦',
+                plane:'✈️', laptop:'💻', dice:'🎰', coins:'🪙', gift:'🎁', send:'🔁' };
+const CAT_COLORS = ['#8b5cf6','#22d3ee','#34d399','#fbbf24','#f472b6','#60a5fa','#fb923c','#a3e635','#f87171','#c084fc','#38bdf8','#fde047','#4ade80'];
+const CHART_SUFFIX = { EUR:'€', USD:'$', MAD:'DH', GBP:'£' };
+
+const state = {
+  currency: 'EUR',
+  currencies: [],
+  rates: {},
+  users: [],
+  userId: null,
+  dashboard: null,
+  merchants: { categories: [], countries: [], locations: [] },
+  charts: {},
+  otp: { tx: null, timer: null },
+  autoTimer: null,
+  previewTimer: null,
+  previewToken: 0,
+  lastReceipt: null,
+};
+
+/* ------------------------------ utils ------------------------------ */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtMoney = (n, code) => new Intl.NumberFormat('fr-FR', { style:'currency', currency: code || state.currency,
+  minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n || 0));
+const fmtNum = (n,d=1) => new Intl.NumberFormat('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}).format(Number(n||0));
+const fmtDate = (iso) => new Date(iso).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
+const fmtDateTime = (iso) => new Date(iso).toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+function timeAgo(iso){
+  const s = (Date.now() - new Date(iso).getTime())/1000;
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s/60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s/3600)} h`;
+  const d = Math.floor(s/86400);
+  return d === 1 ? 'hier' : `il y a ${d} j`;
+}
+const riskColor = (score) => score < 30 ? '#34d399' : score < 60 ? '#fbbf24' : score < 85 ? '#fb923c' : '#f43f5e';
+const riskBg = (score) => score < 30 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
+  : score < 60 ? 'bg-amber-500/15 text-amber-300 border-amber-400/30'
+  : score < 85 ? 'bg-orange-500/15 text-orange-300 border-orange-400/30'
+  : 'bg-rose-500/15 text-rose-300 border-rose-400/30';
+const statusLabel = (s) => ({approved:'Validée', pending_auth:'En attente MFA', declined:'Bloquée', expired:'Expirée'}[s] || s);
+const currencySymbol = (code) => (state.currencies.find(c => c.code === code) || { symbol: code }).symbol;
+
+function toast(message, type='info'){
+  const palette = { success:'border-emerald-400/40 bg-emerald-500/15 text-emerald-100',
+                    warn:'border-amber-400/40 bg-amber-500/15 text-amber-100',
+                    error:'border-rose-400/40 bg-rose-500/15 text-rose-100',
+                    info:'border-violet-400/40 bg-violet-500/15 text-violet-100' }[type];
+  const el = document.createElement('div');
+  el.className = `glass-strong border ${palette} rounded-2xl px-4 py-3 text-sm animate-slidein`;
+  el.innerHTML = `<div class="font-semibold leading-snug">${esc(message)}</div>`;
+  $('toasts').appendChild(el);
+  setTimeout(() => { el.style.transition='opacity .4s, transform .4s'; el.style.opacity='0'; el.style.transform='translateX(20px)'; setTimeout(()=>el.remove(), 400); }, 5200);
+}
+
+async function api(path, options={}){
+  const res = await fetch(path, { headers:{'Content-Type':'application/json'}, ...options });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
+  if (!res.ok) {
+    const err = new Error((data && (data.detail || data.message)) || `Erreur ${res.status}`);
+    err.status = res.status; err.payload = data; throw err;
+  }
+  return data;
+}
+
+/* --------------------------- initialisation --------------------------- */
+async function init(){
+  try {
+    const [users, merchants, currencies] = await Promise.all([
+      api('/api/v1/users'), api('/api/v1/merchants'), api('/api/v1/currencies'),
+    ]);
+    state.users = users;
+    state.merchants = merchants;
+    state.currencies = currencies.currencies;
+    state.rates = Object.fromEntries(currencies.currencies.map(c => [c.code, c.rate]));
+    state.userId = users[0]?.user_id || null;
+
+    // --- Sélecteur de devise (header)
+    $('currencySelect').innerHTML = state.currencies.map(c =>
+      `<option value="${c.code}" ${c.code === state.currency ? 'selected' : ''}>${c.symbol} ${c.code}</option>`).join('');
+
+    // --- Utilisateurs
+    $('userSelect').innerHTML = users.map(u =>
+      `<option value="${esc(u.user_id)}">${esc(u.name)} · ${esc(u.home_city.split(',')[0])}</option>`).join('');
+    $('userSelect').value = state.userId;
+
+    // --- Référentiels du formulaire de paiement
+    $('payCountry').innerHTML = state.merchants.countries.map(c =>
+      `<option value="${esc(c.code)}">${esc(c.name)} ${c.risk_hint >= 0.5 ? '· risque élevé' : ''}</option>`).join('');
+    $('payCategory').innerHTML = state.merchants.categories.map(c =>
+      `<option value="${esc(c.key)}" data-merchants="${esc((c.merchants || []).join('|'))}">${esc(c.label)} — risque ${Math.round(c.risk*100)}%</option>`).join('');
+
+    const now = new Date().getHours();
+    $('payHour').value = now;
+    $('payHourLabel').textContent = `${String(now).padStart(2,'0')}h`;
+
+    applyCurrencyLabels();
+    await loadDashboard();
+    loadModelInsights();
+    refreshMerchantSuggestions();
+  } catch (e){
+    toast(`Impossible de charger les données : ${e.message}`, 'error');
+  }
+}
+
+function applyCurrencyLabels(){
+  const symbol = currencySymbol(state.currency);
+  document.querySelectorAll('.currency-label').forEach(el => el.textContent = state.currency);
+  if ($('payCurrencyBadge')) $('payCurrencyBadge').textContent = symbol;
+}
+
+function refreshMerchantSuggestions(){
+  const option = $('payCategory').selectedOptions[0];
+  const names = (option?.dataset.merchants || '').split('|').filter(Boolean);
+  $('merchantSuggestions').innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
+}
+
+async function loadModelInsights(){
+  try {
+    const info = await api('/api/v1/model/insights');
+    $('modelAuc').textContent = info.metrics?.auc_roc ? `AUC ${info.metrics.auc_roc}` : 'modèle actif';
+    const imps = Object.entries(info.feature_importances || {}).slice(0,6);
+    const max = Math.max(...imps.map(([,v]) => v), 0.0001);
+    $('featureImportances').innerHTML = imps.map(([k,v]) => {
+      const label = (info.feature_labels && info.feature_labels[k]) || k;
+      const pct = Math.round(v/max*100);
+      return `<div>
+        <div class="flex justify-between text-[11px] text-slate-400"><span>${esc(label)}</span><span>${(v*100).toFixed(1)}%</span></div>
+        <div class="mt-1 h-1.5 rounded-full bg-white/8 overflow-hidden"><div class="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+  } catch(e){ /* silencieux */ }
+}
+
+/* ------------------------------ dashboard ------------------------------ */
+async function loadDashboard(showToast=false){
+  const dash = await api(`/api/v1/dashboard/${state.userId}?currency=${state.currency}`);
+  state.dashboard = dash;
+  renderAccount(dash); renderSecurity(dash); renderCharts(dash); renderTransactions(dash); renderPending(dash);
+  applyCurrencyLabels();
+  if (showToast) toast(`Montants convertis en ${state.currency}.`, 'info');
+}
+
+function renderAccount(dash){
+  const cur = dash.display_currency;
+  $('balanceValue').textContent = fmtMoney(dash.balance.amount, cur);
+  $('balanceSecondary').textContent = cur === 'EUR'
+    ? `Devise de référence : EUR`
+    : `≈ ${fmtMoney(dash.balance.amount_eur, 'EUR')} · 1 EUR = ${fmtNum(dash.rate, 2)} ${cur}`;
+  $('userName').textContent = dash.user.name;
+  $('userCity').textContent = `${dash.user.home_city} · Client depuis 2023`;
+  $('ibanLine').textContent = `IBAN FR76 •••• •••• •••• ${dash.user.card_last4}`;
+  $('cardLast4').textContent = `•••• ${dash.user.card_last4}`;
+  $('fxRate').textContent = `Taux : 1 € = ${fmtNum(dash.rate, 2)} ${cur}`;
+  $('kpiSpend').textContent = fmtMoney(dash.kpis.spend_30d, cur);
+  $('kpiTicket').textContent = `ticket moyen ${fmtMoney(dash.kpis.avg_ticket, cur)}`;
+  $('kpiIncome').textContent = fmtMoney(dash.kpis.income_30d, cur);
+  $('kpiTxCount').textContent = `${dash.kpis.tx_count_30d} transactions`;
+  $('kpiRisk').textContent = `${fmtNum(dash.kpis.avg_risk_30d)}%`;
+  $('kpiRisk').style.color = riskColor(dash.kpis.avg_risk_30d);
+  $('kpiAlerts').textContent = dash.kpis.alerts_30d;
+  $('kpiPending').textContent = dash.kpis.pending_challenges ? `${dash.kpis.pending_challenges} en attente de MFA` : 'aucune en attente';
+}
+
+function renderSecurity(dash){
+  const { score, level, incidents, avg_risk } = dash.security;
+  const circumference = 2 * Math.PI * 52;
+  $('gaugeArc').style.strokeDashoffset = String(circumference * (1 - score/100));
+  $('securityScore').textContent = fmtNum(score, 0);
+  $('headerScoreValue').textContent = `${fmtNum(score,0)}/100`;
+  $('headerScoreValue').style.color = riskColor(100 - score);
+  const levelLabels = { excellent:'Excellent', bon:'Bon', moyen:'Moyen', fragile:'Fragile' };
+  $('securityLevel').textContent = levelLabels[level] || level;
+  const verdicts = {
+    excellent: "Aucun comportement anormal détecté. Toutes les transactions récentes sont cohérentes avec vos habitudes.",
+    bon: "Activité normale. Quelques transactions ont demandé une vigilance légère de l'IA.",
+    moyen: "Plusieurs transactions à risque modéré ont été enregistrées récemment. L'IA renforce la surveillance.",
+    fragile: "Alertes répétées : authentification dynamique systématique recommandée et surveillance accrue.",
+  };
+  $('securityVerdict').textContent = verdicts[level] || '';
+  $('securityIncidents').textContent = incidents;
+  $('securityAvg').textContent = `${fmtNum(avg_risk)}%`;
+}
+
+function renderPending(dash){
+  const list = dash.pending_challenges || [];
+  $('pendingCard').classList.toggle('hidden', list.length === 0);
+  $('pendingList').innerHTML = list.map(tx => `
+    <div class="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2.5">
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-semibold truncate">${fmtMoney(tx.amount)} · ${esc(tx.merchant)}</div>
+        <div class="text-[11px] text-slate-400">${esc(tx.location)} · risque ${fmtNum(tx.risk_score,0)}% · ${timeAgo(tx.created_at)}</div>
+      </div>
+      <button data-resume="${esc(tx.id)}" class="text-[11px] font-semibold bg-amber-400/20 text-amber-100 border border-amber-300/30 rounded-lg px-2.5 py-1.5 hover:bg-amber-400/30 transition">Saisir le code</button>
+    </div>`).join('');
+  document.querySelectorAll('[data-resume]').forEach(btn =>
+    btn.addEventListener('click', () => resumeChallenge(btn.dataset.resume)));
+}
+
+/* ------------------------------- charts ------------------------------- */
+function chartDefaults(){ Chart.defaults.color = 'rgba(226,232,240,.72)'; Chart.defaults.font.family = 'Inter'; Chart.defaults.font.size = 11; }
+
+function renderCharts(dash){
+  if (typeof Chart === 'undefined'){ $('categoryEmpty').classList.remove('hidden'); return; }
+  chartDefaults();
+  Object.values(state.charts).forEach(c => c && c.destroy());
+  const suffix = CHART_SUFFIX[state.currency] || state.currency;
+
+  // 1) Doughnut catégories
+  const cats = dash.spending_by_category.slice(0, 8);
+  state.charts.category = new Chart($('categoryChart'), {
+    type: 'doughnut',
+    data: {
+      labels: cats.map(c => c.label),
+      datasets: [{ data: cats.map(c => c.amount), backgroundColor: CAT_COLORS, borderColor: 'rgba(5,7,15,.9)', borderWidth: 3, hoverOffset: 8 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 9, usePointStyle: true, pointStyle: 'circle', padding: 12 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label} : ${fmtMoney(ctx.parsed)}` } },
+      },
+    },
+  });
+
+  // 2) Barres : activité par heure
+  const hours = dash.activity_by_hour;
+  const hourColors = hours.map((_, i) => (i >= 23 || i <= 5) ? 'rgba(244,63,94,.75)' : 'rgba(139,92,246,.75)');
+  state.charts.hour = new Chart($('hourChart'), {
+    type: 'bar',
+    data: {
+      labels: hours.map((_, i) => `${i}h`),
+      datasets: [{ data: hours, backgroundColor: hourColors, borderRadius: 5, barPercentage: .75 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} transactions entre ${ctx.dataIndex}h et ${ctx.dataIndex + 1}h` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } },
+        y: { grid: { color: 'rgba(255,255,255,.06)' }, ticks: { precision: 0 }, beginAtZero: true },
+      },
+    },
+  });
+
+  // 3) Tendance + anomalies
+  const trend = dash.daily_trend;
+  const anomalyPoints = trend.map((d, i) => d.anomalies > 0 ? { x: i, y: d.amount, anomalies: d.anomalies } : null).filter(Boolean);
+  state.charts.trend = new Chart($('trendChart'), {
+    type: 'line',
+    data: {
+      labels: trend.map(d => fmtDate(d.date)),
+      datasets: [
+        {
+          label: 'Dépenses', data: trend.map(d => d.amount), tension: .35, borderWidth: 2.5,
+          borderColor: '#a78bfa', pointRadius: 3, pointBackgroundColor: '#a78bfa',
+          fill: true, backgroundColor: (ctx) => {
+            const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 260);
+            g.addColorStop(0, 'rgba(139,92,246,.35)'); g.addColorStop(1, 'rgba(139,92,246,0)'); return g;
+          },
+        },
+        {
+          label: 'Anomalies IA', type: 'scatter', data: anomalyPoints, pointRadius: 7, pointHoverRadius: 9,
+          backgroundColor: 'rgba(244,63,94,.9)', borderColor: '#fff', borderWidth: 2, showLine: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.type === 'scatter'
+              ? ` ${ctx.raw.anomalies} anomalie(s) IA détectée(s)`
+              : ` Dépenses : ${fmtMoney(ctx.parsed.y)}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: { color: 'rgba(255,255,255,.06)' }, ticks: { callback: v => `${v} ${suffix}` } },
+      },
+    },
+  });
+}
+
+/* ---------------------------- transactions ---------------------------- */
+function renderTransactions(dash){
+  const rows = dash.recent_transactions || [];
+  if (!rows.length){ $('txList').innerHTML = `<div class="py-6 text-center text-sm text-slate-400">Aucune transaction.</div>`; return; }
+  $('txList').innerHTML = rows.map(tx => `
+    <button data-tx='${esc(JSON.stringify({ id:tx.id, amount:tx.amount, currency:tx.currency, merchant:tx.merchant, merchant_label:tx.merchant_label,
+        merchant_icon:tx.merchant_icon, location:tx.location, hour:tx.hour, risk_score:tx.risk_score, risk_level:tx.risk_level,
+        decision:tx.decision, status:tx.status, factors:tx.factors, components:tx.components, created_at:tx.created_at, channel:tx.channel, auth_code:tx.auth_code }))}'
+      class="w-full text-left flex items-center gap-3 py-3 hover:bg-white/4 rounded-xl px-2 transition">
+      <div class="w-10 h-10 rounded-xl bg-white/5 border border-white/10 grid place-items-center text-lg shrink-0">${ICONS[tx.merchant_icon] || '💳'}</div>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-semibold truncate">${esc(tx.merchant)}</div>
+        <div class="text-[11px] text-slate-400 truncate">${esc(tx.merchant_label)} · ${esc(tx.location)} · ${String(tx.hour).padStart(2,'0')}h</div>
+      </div>
+      <div class="text-right shrink-0">
+        <div class="text-sm font-bold ${tx.status === 'approved' ? 'text-slate-100' : tx.status === 'declined' ? 'text-slate-500 line-through' : 'text-amber-200'}">
+          ${tx.status === 'approved' ? '-' : ''}${fmtMoney(tx.amount, tx.currency)}
+        </div>
+        <div class="text-[11px] text-slate-400">${timeAgo(tx.created_at)}</div>
+      </div>
+      <div class="shrink-0 flex flex-col items-end gap-1 w-[86px]">
+        <span class="text-[10px] font-bold border rounded-lg px-2 py-0.5 ${riskBg(tx.risk_score)}">${fmtNum(tx.risk_score,0)}%</span>
+        <span class="text-[10px] text-slate-400">${statusLabel(tx.status)}</span>
+      </div>
+    </button>`).join('');
+
+  document.querySelectorAll('[data-tx]').forEach(el =>
+    el.addEventListener('click', () => showDetail(JSON.parse(el.dataset.tx))));
+}
+
+function showDetail(tx){
+  const comp = tx.components || {};
+  $('detailBody').innerHTML = `
+    <div class="flex items-center justify-between glass rounded-xl px-4 py-3">
+      <div><div class="font-semibold">${esc(tx.merchant)}</div><div class="text-xs text-slate-400">${esc(tx.merchant_label)} · ${esc(tx.channel)}</div></div>
+      <div class="text-right"><div class="font-bold">${fmtMoney(tx.amount, tx.currency)}</div><div class="text-xs text-slate-400">${fmtDateTime(tx.created_at)}</div></div>
+    </div>
+    <div class="grid grid-cols-3 gap-2 text-center">
+      ${[['Score IA', `${fmtNum(tx.risk_score,0)}%`, riskColor(tx.risk_score)], ['Statut', statusLabel(tx.status), '#e2e8f0'], ['Décision', esc(tx.decision), '#e2e8f0']]
+        .map(([k,v,c]) => `<div class="glass rounded-xl py-3"><div class="text-[10px] uppercase tracking-wider text-slate-400">${k}</div><div class="mt-1 text-sm font-bold" style="color:${c}">${v}</div></div>`).join('')}
+    </div>
+    ${tx.auth_code ? `<div class="code-chip rounded-xl px-4 py-3 text-center">
+      <div class="text-[10px] uppercase tracking-widest text-violet-200/80">Code d'autorisation à usage unique</div>
+      <div class="text-xl font-extrabold font-mono text-white mt-1">${esc(tx.auth_code)}</div></div>` : ''}
+    <div class="glass rounded-xl p-4">
+      <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Décomposition du score</div>
+      ${[['RandomForest', comp.random_forest], ['IsolationForest', comp.isolation_forest], ['Règles métier', comp.business_rules]]
+        .filter(([,v]) => v !== undefined)
+        .map(([k,v]) => `<div class="mb-2"><div class="flex justify-between text-[11px] text-slate-300"><span>${k}</span><span>${fmtNum(v,1)}%</span></div>
+          <div class="mt-1 h-1.5 rounded-full bg-white/8 overflow-hidden"><div class="h-full rounded-full" style="width:${v}%;background:${riskColor(v)}"></div></div></div>`).join('')}
+    </div>
+    <div class="glass rounded-xl p-4">
+      <div class="text-xs uppercase tracking-wider text-slate-400 mb-2">Facteurs analysés par l'IA</div>
+      <ul class="space-y-1.5 text-xs text-slate-300">
+        ${(tx.factors || []).map(f => `<li class="flex gap-2"><span class="text-violet-300">▸</span><span>${esc(f)}</span></li>`).join('') || '<li>—</li>'}
+      </ul>
+    </div>
+    <div class="text-[11px] text-slate-500">ID : ${esc(tx.id)} · Localisation : ${esc(tx.location)} · Heure : ${String(tx.hour).padStart(2,'0')}h</div>`;
+  $('detailModal').classList.remove('hidden');
+}
+
+/* =================== MODULE DE SIMULATION DE PAIEMENT =================== */
+
+function openPaymentModal(prefill){
+  $('paymentStepForm').classList.remove('hidden');
+  $('paymentStepReceipt').classList.add('hidden');
+  $('paymentModal').classList.remove('hidden');
+
+  const avg = state.dashboard?.user?.avg_amount ?? 50;
+  if (prefill){
+    $('payAmount').value = prefill.amount_current ?? prefill.amount ?? avg.toFixed(2);
+    if (prefill.merchant) $('payMerchant').value = prefill.merchant;
+    if (prefill.merchant_type) $('payCategory').value = prefill.merchant_type;
+    if (prefill.country) $('payCountry').value = prefill.country;
+    if (prefill.location){
+      const found = state.merchants.locations.find(l => l.key === prefill.location);
+      if (found) $('payCountry').value = found.country;
+    }
+    if (prefill.hour !== undefined) $('payHour').value = prefill.hour;
+    $('payNewDevice').checked = !!prefill.is_new_device;
+  } else if (!$('payAmount').value){
+    $('payAmount').value = (Math.round(avg * 0.9 * 100) / 100).toFixed(2);
+  }
+  $('payHourLabel').textContent = `${String($('payHour').value).padStart(2,'0')}h`;
+  refreshMerchantSuggestions();
+  applyCurrencyLabels();
+  scheduleLivePreview(true);
+  setTimeout(() => $('payAmount').focus(), 60);
+}
+
+function closePaymentModal(){
+  $('paymentModal').classList.add('hidden');
+}
+
+function newSimulation(){
+  $('paymentStepReceipt').classList.add('hidden');
+  $('paymentStepForm').classList.remove('hidden');
+  $('payMerchant').value = '';
+  $('payAmount').value = ((state.dashboard?.user?.avg_amount ?? 50) * 0.9).toFixed(2);
+  scheduleLivePreview(true);
+}
+
+function paymentPayload(){
+  return {
+    user_id: state.userId,
+    amount: parseFloat($('payAmount').value || '0'),
+    currency: state.currency,
+    merchant: $('payMerchant').value.trim() || null,
+    merchant_type: $('payCategory').value,
+    country: $('payCountry').value,
+    hour: parseInt($('payHour').value, 10),
+    is_new_device: $('payNewDevice').checked,
+    channel: 'mobile_app',
+  };
+}
+
+/* --- Aperçu du risque en temps réel (debounce 300 ms) --- */
+function scheduleLivePreview(immediate=false){
+  clearTimeout(state.previewTimer);
+  state.previewTimer = setTimeout(runLivePreview, immediate ? 60 : 300);
+}
+
+async function runLivePreview(){
+  const payload = paymentPayload();
+  if (!(payload.amount > 0)) { renderLivePreview(null); return; }
+  const token = ++state.previewToken;
+  try {
+    const preview = await api('/api/v1/transaction/preview', { method:'POST', body: JSON.stringify({
+      user_id: payload.user_id, amount: payload.amount, currency: payload.currency,
+      merchant_type: payload.merchant_type, country: payload.country,
+      hour: payload.hour, is_new_device: payload.is_new_device,
+    })});
+    if (token !== state.previewToken) return; // réponse obsolète
+    renderLivePreview(preview);
+  } catch (e){ /* silencieux : l'aperçu ne doit pas gêner la saisie */ }
+}
+
+function renderLivePreview(preview){
+  const box = $('liveBar');
+  if (!preview){
+    $('liveScore').innerHTML = `—<span class="text-base text-slate-500">%</span>`;
+    $('liveLevel').textContent = '—';
+    $('liveDecision').textContent = 'en attente de données…';
+    $('liveFactors').innerHTML = '';
+    box.style.width = '0%';
+    return;
+  }
+  const color = riskColor(preview.risk_score);
+  $('liveScore').innerHTML = `<span style="color:${color}">${fmtNum(preview.risk_score,0)}</span><span class="text-base text-slate-500">%</span>`;
+  $('liveLevel').textContent = preview.risk_label;
+  $('liveLevel').className = `text-[11px] border rounded-lg px-2 py-0.5 ${riskBg(preview.risk_score)}`;
+  $('liveDecision').innerHTML = preview.requires_otp
+    ? `<span class="text-amber-300">MFA requis</span> · ville : ${esc(preview.location)}`
+    : `<span class="text-emerald-300">Validation automatique</span> · ville : ${esc(preview.location)}`;
+  box.style.width = `${Math.max(preview.risk_score, 2)}%`;
+  box.style.background = `linear-gradient(90deg, #34d399, ${color})`;
+  $('liveFactors').innerHTML = preview.factors.slice(0,3).map(f =>
+    `<div class="flex gap-2"><span class="text-violet-300">▸</span><span>${esc(f)}</span></div>`).join('');
+}
+
+/* --- Soumission --- */
+async function submitPayment(){
+  const payload = paymentPayload();
+  if (!(payload.amount > 0)) { toast('Veuillez saisir un montant valide.', 'warn'); return; }
+  const btn = $('btnSubmitPayment');
+  btn.disabled = true; btn.textContent = "Analyse par l'IA…";
+  try {
+    const result = await api('/api/v1/transaction', { method:'POST', body: JSON.stringify(payload) });
+    closePaymentModal();
+    await loadDashboard();
+    if (result.requires_otp && result.otp_challenge){
+      toast(`Risque ${fmtNum(result.risk_score,0)}% : authentification MFA déclenchée.`, 'warn');
+      openOtpModal(result);
+    } else if (result.status === 'approved'){
+      toast(`Paiement validé (risque ${fmtNum(result.risk_score,0)} %).`, 'success');
+      showReceipt(result);
+    } else {
+      toast('Transaction bloquée par le moteur IA.', 'error');
+    }
+  } catch (e){
+    toast(`Erreur : ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Analyser & payer';
+  }
+}
+
+/* --- Reçu avec code d'autorisation à usage unique --- */
+function showReceipt(result){
+  const tx = result.transaction || {};
+  const code = result.authorization_code || tx.auth_code || null;
+  const currency = tx.currency || result.currency || state.currency;
+
+  $('paymentStepForm').classList.add('hidden');
+  $('paymentStepReceipt').classList.remove('hidden');
+  $('paymentModal').classList.remove('hidden');
+
+  $('receiptTitle').textContent = 'Paiement autorisé';
+  $('receiptSubtitle').textContent = result.decision === 'ACCEPTED_AFTER_OTP'
+    ? 'Authentification dynamique réussie — transaction débitée.'
+    : 'Transaction validée automatiquement par l\'IA (risque faible).';
+  $('receiptAmount').textContent = fmtMoney(tx.amount ?? result.amount, currency);
+  $('receiptMerchant').textContent = `${tx.merchant || '—'}${tx.merchant_label ? ' · ' + tx.merchant_label : ''}`;
+  $('receiptLocation').textContent = tx.location || '—';
+  const risk = result.risk_score ?? tx.risk_score;
+  $('receiptRisk').innerHTML = `<span style="color:${riskColor(risk || 0)}">${fmtNum(risk,0)} %</span>`;
+  $('receiptBalance').textContent = result.balance_after !== undefined ? fmtMoney(result.balance_after, currency) : '—';
+
+  if (code){
+    $('receiptCode').textContent = code;
+    $('receiptCodeBlock').classList.remove('hidden');
+    $('receiptCodeNote').textContent = result.decision === 'ACCEPTED_AFTER_OTP'
+      ? 'Code MFA validé — consommé et à usage unique.'
+      : 'Code de sécurité à usage unique généré par l\'IA pour autoriser ce paiement.';
+  } else {
+    $('receiptCodeBlock').classList.add('hidden');
+  }
+}
+
+/* ============================ MFA / OTP ============================ */
+function ensureOtpInputs(count = 4){
+  const container = $('otpInputs');
+  if (container.children.length !== count){
+    container.innerHTML = Array.from({length:count}, (_, i) =>
+      `<input inputmode="numeric" maxlength="1" data-otp="${i}" class="otp-box flex-1 text-center text-xl font-bold bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/70 focus:border-violet-400 transition" />`).join('');
+    const inputs = [...container.querySelectorAll('input')];
+    inputs.forEach((inp, i) => {
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.replace(/\D/g,'');
+        if (inp.value && i < inputs.length - 1) inputs[i+1].focus();
+        if (inputs.every(x => x.value)) $('btnVerifyOtp').focus();
+      });
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !inp.value && i > 0) inputs[i-1].focus();
+        if (e.key === 'Enter') verifyOtp();
+      });
+      inp.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const digits = (e.clipboardData.getData('text') || '').replace(/\D/g,'').slice(0, inputs.length);
+        digits.split('').forEach((d, idx) => { if (inputs[idx]) inputs[idx].value = d; });
+        (inputs[digits.length] || inputs[inputs.length-1]).focus();
+      });
+    });
+  }
+  [...$('otpInputs').querySelectorAll('input')].forEach(i => i.value = '');
+  $('otpError').classList.add('hidden');
+}
+
+function openOtpModal(result){
+  state.otp.tx = result;
+  ensureOtpInputs(4);
+  $('otpPhone').textContent = result.otp_challenge?.masked_phone || state.dashboard?.user?.phone || '—';
+  $('otpDemoCode').textContent = result.otp_challenge?.demo_otp || 'OTP-••••';
+  const tx = result.transaction || {};
+  $('txRiskSummary').innerHTML = tx.amount !== undefined
+    ? `Transaction de <span class="text-slate-200 font-semibold">${fmtMoney(tx.amount, tx.currency || state.currency)}</span>
+       chez <span class="text-slate-200 font-semibold">${esc(tx.merchant || '—')}</span> à ${esc(tx.location || '—')}
+       — score de risque <span class="font-bold" style="color:${riskColor(result.risk_score)}">${fmtNum(result.risk_score,0)} %</span>.`
+    : `Transaction <span class="font-mono">${esc(result.transaction_id)}</span> en attente d'authentification.`;
+  startOtpCountdown(result.otp_challenge?.expires_in_seconds || 180);
+  $('otpModal').classList.remove('hidden');
+  setTimeout(() => $('otpInputs').querySelector('input')?.focus(), 80);
+}
+
+function startOtpCountdown(seconds){
+  clearInterval(state.otp.timer);
+  let left = seconds;
+  const tick = () => {
+    const m = String(Math.floor(left/60)).padStart(2,'0'), s = String(left%60).padStart(2,'0');
+    $('otpTimer').textContent = `${m}:${s}`;
+    if (left <= 0){ clearInterval(state.otp.timer); $('otpTimer').textContent = 'expiré'; }
+    left -= 1;
+  };
+  tick();
+  state.otp.timer = setInterval(tick, 1000);
+}
+
+async function resumeChallenge(txId){
+  try {
+    const res = await api(`/api/v1/transaction/${txId}/resend?currency=${state.currency}`, { method:'POST' });
+    openOtpModal({
+      transaction_id: txId,
+      risk_score: res.transaction?.risk_score ?? 0,
+      transaction: res.transaction || {},
+      otp_challenge: { demo_otp: res.demo_otp, expires_in_seconds: res.expires_in_seconds, max_attempts: 3 },
+      factors: res.transaction?.factors || [],
+    });
+    toast('Nouveau code MFA généré pour cette transaction.', 'info');
+  } catch (e){ toast(e.message, 'error'); }
+}
+
+async function verifyOtp(){
+  const tx = state.otp.tx;
+  if (!tx) return;
+  const digits = [...$('otpInputs').querySelectorAll('input')].map(i => i.value).join('');
+  if (digits.length < 4){ showOtpError('Saisissez les 4 chiffres du code (format OTP-1234).'); return; }
+  try {
+    const res = await api(`/api/v1/transaction/${tx.transaction_id}/verify`, { method:'POST',
+      body: JSON.stringify({ otp: `OTP-${digits}`, currency: state.currency }) });
+    closeOtpModal();
+    toast('Code MFA validé : paiement autorisé.', 'success');
+    await loadDashboard();
+    showReceipt(res);
+  } catch (e){
+    showOtpError(e.message);
+    toast('Code MFA refusé.', 'error');
+    if (e.status === 410 || e.status === 423) await loadDashboard();
+  }
+}
+
+function showOtpError(msg){
+  const box = $('otpError');
+  box.textContent = msg;
+  box.classList.remove('hidden');
+  box.classList.add('fade-up');
+}
+
+function closeOtpModal(){
+  clearInterval(state.otp.timer);
+  $('otpModal').classList.add('hidden');
+  state.otp.tx = null;
+}
+
+async function cancelPendingTx(){
+  const tx = state.otp.tx;
+  if (!tx) return;
+  try { await api(`/api/v1/transaction/${tx.transaction_id}/cancel`, { method:'POST' }); } catch (e){ /* déjà traitée */ }
+  closeOtpModal();
+  toast('Transaction refusée — aucun débit effectué.', 'info');
+  await loadDashboard();
+}
+
+async function resendOtp(){
+  const tx = state.otp.tx;
+  if (!tx) return;
+  try {
+    const res = await api(`/api/v1/transaction/${tx.transaction_id}/resend?currency=${state.currency}`, { method:'POST' });
+    $('otpDemoCode').textContent = res.demo_otp;
+    ensureOtpInputs(4);
+    startOtpCountdown(res.expires_in_seconds);
+    toast('Nouveau code MFA envoyé par SMS (simulation).', 'info');
+  } catch (e){ toast(e.message, 'error'); }
+}
+
+/* ==================== HISTORIQUE DES ALERTES ==================== */
+async function openAlertsModal(){
+  $('alertsModal').classList.remove('hidden');
+  $('alertsBody').innerHTML = `<div class="text-sm text-slate-400 text-center py-6">Chargement des alertes…</div>`;
+  try {
+    const data = await api(`/api/v1/alerts/${state.userId}?limit=3&currency=${state.currency}`);
+    renderAlerts(data);
+  } catch (e){
+    $('alertsBody').innerHTML = `<div class="text-sm text-rose-300 text-center py-6">Erreur : ${esc(e.message)}</div>`;
+  }
+}
+
+function renderAlerts(data){
+  if (!data.alerts.length){
+    $('alertsBody').innerHTML = `<div class="text-sm text-slate-400 text-center py-6">Aucune tentative de fraude détectée sur ce compte. 🎉</div>`;
+    return;
+  }
+  $('alertsBody').innerHTML = data.alerts.map((a, index) => `
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-4 fade-up">
+      <div class="flex items-start gap-3">
+        <div class="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-400/30 grid place-items-center text-lg shrink-0">
+          ${ICONS[a.merchant_icon] || '⚠️'}
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-bold">${esc(a.merchant)}</span>
+            <span class="text-[10px] font-bold border rounded-lg px-2 py-0.5 ${riskBg(a.risk_score)}">Risque ${fmtNum(a.risk_score,0)} %</span>
+            <span class="text-[10px] text-slate-400">${esc(a.merchant_label)}</span>
+          </div>
+          <div class="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-300">
+            <div><span class="text-slate-500">Heure :</span> ${fmtDateTime(a.created_at)} (${String(a.hour).padStart(2,'0')}h)</div>
+            <div><span class="text-slate-500">Montant :</span> <span class="font-semibold">${fmtMoney(a.amount, a.currency)}</span></div>
+            <div class="col-span-2"><span class="text-slate-500">Lieu :</span> ${esc(a.location)}</div>
+          </div>
+          <div class="mt-2.5 rounded-xl bg-rose-500/10 border border-rose-400/20 px-3 py-2">
+            <div class="text-[10px] uppercase tracking-widest text-rose-200/80">Motif du blocage</div>
+            <div class="text-xs text-rose-50 mt-0.5">${esc(a.reason)}</div>
+          </div>
+          <div class="mt-2 text-[11px] ${a.status === 'declined' ? 'text-rose-300' : 'text-amber-300'}">
+            ${esc(a.action)}
+          </div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-[10px] uppercase tracking-widest text-slate-500">Alerte</div>
+          <div class="text-lg font-extrabold text-slate-400">#${index + 1}</div>
+        </div>
+      </div>
+    </div>`).join('');
+  $('alertsBody').insertAdjacentHTML('beforeend',
+    `<div class="text-[11px] text-slate-500 text-center pt-1">Analyse IA — seuil d'authentification dynamique : 30 % · devise d'affichage : ${data.currency}</div>`);
+}
+
+/* --------------------------- scénarios rapides --------------------------- */
+async function simulate(scenario, options = {}){
+  try {
+    const data = await api('/api/v1/simulate', { method:'POST', body: JSON.stringify({
+      user_id: state.userId, scenario, currency: state.currency }) });
+    const result = data.result;
+    await loadDashboard();
+    if (options.silent) return result;
+
+    if (result.requires_otp && result.otp_challenge){
+      toast(`Scénario ${scenario === 'suspicious' ? 'suspect' : 'normal'} : MFA déclenchée (risque ${fmtNum(result.risk_score,0)} %).`, 'warn');
+      openOtpModal(result);
+    } else if (result.status === 'approved'){
+      toast(`Scénario ${scenario === 'suspicious' ? 'suspect' : 'normal'} validé (risque ${fmtNum(result.risk_score,0)} %).`, 'success');
+      showReceipt(result);
+    } else {
+      toast('Scénario bloqué par le moteur IA.', 'error');
+    }
+    return result;
+  } catch (e){ toast(`Erreur : ${e.message}`, 'error'); return null; }
+}
+
+/* ------------------------------ auto démo ------------------------------ */
+function toggleAutoDemo(enabled){
+  clearInterval(state.autoTimer);
+  state.autoTimer = null;
+  if (!enabled) return;
+  state.autoTimer = setInterval(async () => {
+    if (!$('autoDemo').checked) return;
+    const scenario = Math.random() < 0.7 ? 'normal' : 'suspicious';
+    const result = await simulate(scenario, { silent: true });
+    if (!result) return;
+    toast(`Flux démo : ${result.status === 'approved' ? 'paiement validé' : 'MFA'} — risque ${fmtNum(result.risk_score,0)} % (${state.currency}).`,
+      result.status === 'approved' ? 'success' : 'warn');
+    if (result.requires_otp && result.otp_challenge){
+      const demoCode = result.otp_challenge.demo_otp;
+      setTimeout(async () => {
+        try {
+          await api(`/api/v1/transaction/${result.transaction_id}/verify`, { method:'POST',
+            body: JSON.stringify({ otp: demoCode, currency: state.currency }) });
+          toast('Code MFA validé automatiquement (mode démo).', 'success');
+          await loadDashboard();
+        } catch (e){ /* expiré */ }
+      }, 2800);
+    }
+  }, 7000);
+}
+
+/* ------------------------------- events ------------------------------- */
+$('currencySelect').addEventListener('change', async (e) => {
+  state.currency = e.target.value;
+  applyCurrencyLabels();
+  await loadDashboard(true);
+  if (!$('paymentModal').classList.contains('hidden') && !$('paymentStepForm').classList.contains('hidden')) scheduleLivePreview(true);
+  if (!$('alertsModal').classList.contains('hidden')) openAlertsModal();
+});
+$('userSelect').addEventListener('change', async (e) => {
+  state.userId = e.target.value;
+  closePaymentModal();
+  await loadDashboard();
+});
+$('btnRefresh').addEventListener('click', () => loadDashboard().then(() => toast('Tableau de bord actualisé.', 'info')));
+$('kpiAlertsCard').addEventListener('click', openAlertsModal);
+$('btnOpenSimulation').addEventListener('click', () => openPaymentModal());
+$('btnNormal').addEventListener('click', () => simulate('normal'));
+$('btnSuspicious').addEventListener('click', () => simulate('suspicious'));
+$('btnSubmitPayment').addEventListener('click', submitPayment);
+$('btnNewSimulation').addEventListener('click', newSimulation);
+
+// Aperçu temps réel à chaque modification du formulaire
+['payAmount','payMerchant','payCountry','payCategory','payHour','payNewDevice'].forEach(id => {
+  $(id).addEventListener('input', () => scheduleLivePreview());
+  $(id).addEventListener('change', () => scheduleLivePreview());
+});
+$('payCategory').addEventListener('change', refreshMerchantSuggestions);
+$('payHour').addEventListener('input', (e) => { $('payHourLabel').textContent = `${String(e.target.value).padStart(2,'0')}h`; });
+
+$('btnVerifyOtp').addEventListener('click', verifyOtp);
+$('btnResendOtp').addEventListener('click', resendOtp);
+$('btnCancelTx').addEventListener('click', cancelPendingTx);
+$('btnFillOtp').addEventListener('click', () => {
+  const code = ($('otpDemoCode').textContent || '').replace(/\D/g,'');
+  const inputs = [...$('otpInputs').querySelectorAll('input')];
+  code.split('').forEach((d, i) => { if (inputs[i]) inputs[i].value = d; });
+  inputs[Math.min(code.length, inputs.length-1)]?.focus();
+});
+$('autoDemo').addEventListener('change', (e) => { toggleAutoDemo(e.target.checked); if (e.target.checked) toast('Mode démo automatique activé (1 paiement / 7 s).', 'info'); });
+$('btnReset').addEventListener('click', async () => {
+  try {
+    await api(`/api/v1/users/${state.userId}/reset`, { method:'POST' });
+    toast('Historique réinitialisé avec de nouvelles données.', 'info');
+    await loadDashboard();
+  } catch(e){ toast(e.message, 'error'); }
+});
+
+document.querySelectorAll('[data-close-payment]').forEach(b => b.addEventListener('click', closePaymentModal));
+document.querySelectorAll('[data-close-otp]').forEach(b => b.addEventListener('click', closeOtpModal));
+document.querySelectorAll('[data-close-alerts]').forEach(b => b.addEventListener('click', () => $('alertsModal').classList.add('hidden')));
+document.querySelectorAll('[data-close-detail]').forEach(b => b.addEventListener('click', () => $('detailModal').classList.add('hidden')));
+$('paymentModal').addEventListener('click', (e) => { if (e.target.id === 'paymentModal') closePaymentModal(); });
+$('otpModal').addEventListener('click', (e) => { if (e.target.id === 'otpModal') closeOtpModal(); });
+$('alertsModal').addEventListener('click', (e) => { if (e.target.id === 'alertsModal') $('alertsModal').classList.add('hidden'); });
+$('detailModal').addEventListener('click', (e) => { if (e.target.id === 'detailModal') $('detailModal').classList.add('hidden'); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape'){
+    closeOtpModal(); closePaymentModal();
+    $('alertsModal').classList.add('hidden');
+    $('detailModal').classList.add('hidden');
+  }
+});
+
+init();
+</script>
+</body>
+</html>

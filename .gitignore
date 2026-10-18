@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# NovaPay AI — fichiers exclus du depot
+# ---------------------------------------------------------------------------
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Base de donnees de demonstration (regeneree automatiquement au demarrage)
+*.db
+*.sqlite3
+
+# Streamlit (secrets locaux, jamais versionnes)
+.streamlit/secrets.toml
+
+# Systeme / editeurs / logs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# NOTE : le dossier artifacts/ (modeles IA pre-entraines) est volontairement
+# versionne pour accelerer les demarrages / deploiements (cold start ~1 s
+# au lieu de ~15 s de re-entrainement). Il est regenere par :
+#   python ml_model.py --train
