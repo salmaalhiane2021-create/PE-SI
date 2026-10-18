@@ -12,3 +12,8 @@ scikit-learn>=1.4
 pandas>=2.1
 numpy>=1.26
 joblib>=1.3
+
+# Interface Streamlit (deploiement sur Streamlit Community Cloud)
+# st.dialog + st.fragment : Streamlit >= 1.37 ; API width="stretch" : Streamlit >= 1.50
+streamlit>=1.50
+plotly>=5.20

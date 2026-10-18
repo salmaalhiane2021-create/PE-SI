@@ -1,0 +1,13 @@
+# Thème NovaPay AI — repris de l'interface HTML (fond sombre, accents violet/cyan)
+[theme]
+base = "dark"
+primaryColor = "#8b5cf6"
+backgroundColor = "#05070f"
+secondaryBackgroundColor = "#0d1224"
+textColor = "#e2e8f0"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

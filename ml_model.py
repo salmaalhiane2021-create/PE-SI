@@ -68,13 +68,13 @@ FEATURES: List[str] = [
 #: Libelles francais des variables (pour l'explicabilite cote client)
 FEATURE_LABELS: Dict[str, str] = {
     "amount": "Montant de la transaction",
-    "amount_ratio": "Ecrat vs. montant moyen habituel",
+    "amount_ratio": "Écart vs. montant moyen habituel",
     "hour": "Heure de la transaction",
     "is_night": "Transaction nocturne",
     "is_weekend": "Week-end",
     "is_new_location": "Localisation inhabituelle",
     "distance_km": "Distance / domicile",
-    "merchant_risk": "Risque de la categorie marchand",
+    "merchant_risk": "Risque de la catégorie marchand",
     "tx_velocity_1h": "Rythme de transactions",
     "is_new_device": "Appareil non reconnu",
     "is_foreign": "Transaction internationale",

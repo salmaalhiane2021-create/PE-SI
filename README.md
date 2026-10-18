@@ -10,6 +10,7 @@
 | Backend / API | **FastAPI** + Uvicorn |
 | IA / Machine Learning | **scikit-learn** — `RandomForestClassifier` + `IsolationForest` + règles métier |
 | Frontend | **HTML + Tailwind CSS + Chart.js** (interface React-like, sans build, responsive, multi-devises) |
+| Interface alternative | **Streamlit + Plotly** (`streamlit_app.py`, prête pour un déploiement cloud) |
 | Base de données | **SQLite** (fichier `novapay_demo.db`, créé automatiquement) |
 
 ---
@@ -39,15 +40,20 @@ NovaPay AI simule un compte bancaire complet, enrichi d'un **moteur de détectio
 PE&SI/
 ├── main.py               # Serveur FastAPI : routes REST, base SQLite, pipeline de décision
 ├── ml_model.py           # Entraînement + prédiction du risque IA (RandomForest + IsolationForest)
-├── index.html            # Interface utilisateur (Tailwind CSS + Chart.js, JS vanilla)
+├── index.html            # Interface web principale (Tailwind CSS + Chart.js, JS vanilla)
+├── streamlit_app.py      # Interface alternative 100 % Streamlit (déploiement cloud)
+├── export_demo.py        # Exporte la base SQLite vers demo_data.json (fixture Streamlit)
+├── demo_data.json        # Données de démo (4 clients, 300 transactions) pour Streamlit
 ├── requirements.txt      # Dépendances Python
+├── .streamlit/
+│   └── config.toml       # Thème sombre + réglages du serveur Streamlit
 ├── run.bat               # Lancement automatique (Windows)
 ├── run.sh                # Lancement automatique (macOS / Linux)
-├── artifacts/            # Modèles IA sérialisés (générés au 1er lancement, auto-rechargés ensuite)
+├── artifacts/            # Modèles IA sérialisés (versionnés → démarrage instantané)
 │   ├── random_forest.joblib
 │   ├── isolation_forest.joblib
 │   └── metrics.json
-└── novapay_demo.db       # Base SQLite de démonstration (créée au 1er lancement)
+└── novapay_demo.db       # Base SQLite de démonstration (créée au 1er lancement, non versionnée)
 ```
 
 ---
@@ -101,6 +107,38 @@ uvicorn main:app --reload --port 8000
 > Le premier démarrage entraîne le modèle (~10 s) et génère ~45 jours d'historique bancaire
 > fictif pour 4 utilisateurs. Les lancements suivants sont instantanés.
 
+### Option C — Interface Streamlit (alternative, déployable sur le cloud)
+
+```bash
+# (une seule fois) installer les dépendances : pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+→ http://localhost:8501
+
+L'application Streamlit reprend **toutes les fonctionnalités** (tableau de bord, multi-devises,
+simulateur avec **score de risque en temps réel**, authentification dynamique `OTP-XXXX`,
+historique des alertes, moteur IA) et charge les données depuis `demo_data.json`
+(chargement instantané, aucun entraînement au démarrage).
+
+Pour **régénérer la fixture** à partir de la base SQLite :
+
+```bash
+python export_demo.py        # novapay_demo.db  ->  demo_data.json
+```
+
+### Déploiement sur Streamlit Community Cloud
+
+1. Le dépôt est sur GitHub : `https://github.com/salmaalhiane2021-create/PE-SI`
+2. Allez sur **https://share.streamlit.io** → **Create app** → *Deploy a public app from GitHub*.
+3. Sélectionnez le dépôt **`PE-SI`**, la branche **`main`** et le fichier principal **`streamlit_app.py`**.
+4. Cliquez sur **Deploy** : les dépendances sont installées depuis `requirements.txt`
+   et l'application est en ligne en ~1 minute.
+
+> 💡 Chaque visiteur travaille sur **sa propre copie** des données de démonstration :
+> les paiements simulés ne concernent que sa session et tout repart de zéro au rechargement
+> de la page (ou via le bouton « ♻️ Réinitialiser la démonstration »).
+
 ---
 
 ## 4. Scénario de démonstration (5 minutes)
@@ -140,6 +178,11 @@ uvicorn main:app --reload --port 8000
    automatiquement pour illustrer la chaîne complète.
 
 9. **Réinitialiser l'historique** : bouton en bas de la colonne de droite.
+
+> 🔁 **Version Streamlit** : le même scénario s'applique — onglet **💳 Simuler un paiement**
+> (score en temps réel + boutons « Scénario normal / suspect »), panneau **MFA** avec le SMS
+> simulé, reçu avec le code `OTP-XXXX`, puis carte **Alertes** cliquable en haut du tableau
+> de bord (fenêtre modale listant les 3 dernières tentatives).
 
 ---
 
@@ -281,6 +324,11 @@ de `main.py` (base EUR). Pour brancher des taux réels : appelez une API de chan
 (ou mettez en cache un taux journalier) et alimentez `CURRENCIES[code]["rate"]` — le reste de
 l'application (dashboard, alertes, simulateur, scoring) s'adapte automatiquement.
 
+**Version Streamlit** : mêmes variables d'environnement (`OTP_THRESHOLD`, `OTP_TTL_SECONDS`,
+`AUTO_BLOCK_RISK_THRESHOLD`) et mêmes taux (`CURRENCIES` de `streamlit_app.py`).
+Sur Streamlit Community Cloud, définissez-les dans *Settings → Secrets* ou dans l'environnement
+du conteneur.
+
 ---
 
 ## 8. Limites du PoC & pistes d'industrialisation
@@ -304,7 +352,11 @@ l'application (dashboard, alertes, simulateur, scoring) s'adapte automatiquement
 | Page sans style (Tailwind) | Vérifiez l'accès Internet (les CDN servent Tailwind et Chart.js) |
 | `Artifact déjà existant mais incompatible` | Supprimez le dossier `artifacts/` puis relancez |
 | Historique incohérent pendant la démo | `POST /api/v1/users/user_001/reset` ou le bouton « Réinitialiser » |
+| Port 8501 déjà utilisé (Streamlit) | `streamlit run streamlit_app.py --server.port 8502` |
+| `demo_data.json introuvable` (Streamlit) | Lancez `python export_demo.py` pour régénérer la fixture |
 
 ---
 
-*Prototype à but de démonstration — toutes les données sont fictives.*
+*Prototype à but de démonstration — toutes les données sont fictives.
+Deux interfaces disponibles : **FastAPI + HTML** (`main.py` → http://127.0.0.1:8000) et
+**Streamlit** (`streamlit_app.py` → http://localhost:8501).*
